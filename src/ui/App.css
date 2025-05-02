@@ -1,0 +1,239 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+/* Input container styles */
+.input-container {
+  display: flex;
+  align-items: center; /* Align items vertically */
+  gap: 10px; /* Space between elements */
+  margin-bottom: 20px; /* Space below the input group */
+  flex-wrap: wrap; /* Allow wrapping on small screens */
+}
+
+.input-container label {
+  flex-shrink: 0; /* Prevent label from shrinking */
+}
+
+.input-container input[type="text"] {
+  flex-grow: 1; /* Allow input to take available space */
+  min-width: 150px; /* Minimum width before wrapping */
+  padding: 0.6em 1em;
+  border-radius: 8px;
+  border: 1px solid #ccc; /* Basic border */
+}
+
+/* Table container styles */
+.table-container {
+  overflow-x: auto; /* Enable horizontal scrolling on small screens */
+  width: 100%;
+}
+
+.parsed-data-table {
+  width: 100%; /* Ensure table tries to use container width */
+  min-width: 500px; /* Minimum width before scrolling starts */
+  border-collapse: collapse;
+}
+
+.parsed-data-table th,
+.parsed-data-table td {
+  border: 1px solid #555;
+  padding: 8px;
+  text-align: left;
+}
+
+.parsed-data-table th {
+  background-color: #333;
+  color: #ffffff; /* Ensure text is white for contrast */
+}
+
+.parsed-data-table .highlightable-row {
+  cursor: pointer; /* Indicate interactivity */
+}
+
+.parsed-data-table .highlightable-row:hover {
+  background-color: #3a3a3a; /* Subtle hover effect */
+  color: #ffffff; /* Ensure text is white on hover */
+}
+
+/* Media Query for smaller screens */
+@media (max-width: 600px) {
+  #root {
+    padding: 1rem; /* Reduce padding on small screens */
+  }
+
+  h1 {
+    font-size: 2.5em; /* Slightly smaller heading */
+  }
+
+  .input-container {
+    flex-direction: column; /* Stack input elements vertically */
+    align-items: stretch; /* Stretch items to full width */
+  }
+
+  .input-container label {
+    margin-bottom: 5px; /* Add space below label when stacked */
+    text-align: left;
+  }
+
+  .input-container input[type="text"],
+  .input-container button {
+    width: 100%; /* Make input and button full width */
+    box-sizing: border-box; /* Include padding/border in width */
+  }
+
+  /* Adjust barcode display font size */
+  div[style*="font-family: monospace"] { /* Target BarcodeDisplay */
+    font-size: 1em; /* Smaller font for barcode */
+    word-break: break-all; /* Allow breaking long barcodes if needed */
+  }
+
+  /* Ensure table cells don't shrink too much */
+  .parsed-data-table th,
+  .parsed-data-table td {
+    white-space: nowrap; /* Prevent text wrapping within cells */
+    padding: 6px 10px; /* Adjust padding */
+  }
+
+  .parsed-data-table td:nth-child(3) { /* Explanation column */
+     white-space: normal; /* Allow explanation text to wrap */
+     min-width: 150px; /* Give explanation some minimum width */
+  }
+
+  .barcode-display-container {
+    font-size: 1.2em; /* Slightly smaller font on mobile */
+  }
+
+  .parsed-data-table th,
+  .parsed-data-table td {
+    padding: 5px; /* Reduce padding on smaller screens */
+    /* white-space: nowrap; -- Keep most cells from wrapping */
+  }
+
+  .parsed-data-table .explanation-cell {
+    white-space: normal; /* Allow explanation to wrap */
+  }
+
+  /* Ensure table container allows scroll */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+  }
+}
+
+/* Styles moved from inline in App.tsx */
+.barcode-display-container {
+  display: flex;
+  flex-wrap: wrap; /* Allow digits to wrap on small screens */
+  justify-content: center;
+  align-items: flex-end; /* Align digits and letters */
+  margin-bottom: 15px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 1.5em; /* Base size */
+  line-height: 1.1;
+  /* Add sticky positioning */
+  position: sticky;
+  top: 0;
+  background-color: #242424; /* Match body background */
+  padding-top: 10px; /* Add some padding when sticky */
+  padding-bottom: 10px;
+  z-index: 10; /* Ensure it stays on top */
+  border-bottom: 1px solid #333; /* Optional: visual separation */
+}
+
+.barcode-digit {
+  display: flex;
+  flex-direction: column; /* Stack letter above digit */
+  align-items: center;
+  margin: 0 2px; /* Spacing between digits */
+  padding: 2px;
+  min-width: 1ch; /* Ensure minimum width */
+  text-align: center;
+  border: 1px solid transparent; /* Placeholder for highlight border */
+  color: #e0e0e0; /* Set default color for digits (light gray) */
+}
+
+.barcode-letter {
+  font-size: 0.6em; /* Smaller font for letters */
+  color: #aaa; /* Lighter color for letters */
+  height: 1em; /* Ensure space even if no letter */
+}
+
+.barcode-digit.highlighted {
+  background-color: #444;
+  border: 1px solid #888;
+  border-radius: 3px;
+  /* Ensure digit text is white when highlighted */
+  color: #ffffff;
+}
+
+/* Ensure letter above highlighted digit is also white */
+.barcode-digit.highlighted .barcode-letter {
+  color: #ffffff;
+}
+
+.barcode-digit .bold {
+  font-weight: bold;
+}
+
+.error-message {
+  color: #ff6b6b; /* Or your preferred error color */
+  background-color: #4d2222;
+  border: 1px solid #ff6b6b;
+  padding: 10px;
+  margin-top: 15px;
+  border-radius: 4px;
+}
+
+.results-container {
+  margin-top: 20px;
+}
+
+.explanation-toggle {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.explanation-toggle input[type="checkbox"] {
+  margin-right: 5px;
+}

@@ -1,0 +1,142 @@
+import { useState } from 'react'
+import './App.css'
+import { parseBarcode, ParsedBarcodeData } from '../lib/barcode-parser'
+import ParsedDataDisplay from './ParsedDataDisplay'
+
+// New component to display the barcode with highlighting
+interface BarcodeDisplayProps {
+  barcode: string;
+  highlightedIndices: number[] | null;
+  methodUsed?: 1 | 2 | 'Exception'; // Add methodUsed prop
+  showLetters: boolean; // Add prop to control letter display
+}
+
+const BarcodeDisplay: React.FC<BarcodeDisplayProps> = ({ barcode, highlightedIndices, methodUsed, showLetters }) => {
+  const method1Letters = 'ABCDEFGHIJKLM'.split(''); // 13 letters
+  const method2LettersMap: { [index: number]: string } = {
+    [13 - 6]: 'P', // Index 7
+    [13 - 5]: 'Q', // Index 8
+    [13 - 4]: 'R', // Index 9
+    [13 - 3]: 'S', // Index 10
+    [13 - 2]: 'T', // Index 11
+    [13 - 1]: 'U'  // Index 12 (Check Digit)
+  };
+
+  const displayLength = barcode.length;
+  const indexOffset = displayLength === 13 ? 0 : 5;
+
+  return (
+    <div className="barcode-display-container">
+      {barcode.split('').map((digit, index) => {
+        const effectiveIndex = index + indexOffset;
+        let letter = '';
+        if (showLetters && methodUsed && methodUsed !== 'Exception') {
+          if (methodUsed === 1 && effectiveIndex < method1Letters.length) {
+            letter = method1Letters[effectiveIndex];
+          } else if (methodUsed === 2 && method2LettersMap[effectiveIndex]) {
+            letter = method2LettersMap[effectiveIndex];
+          }
+        }
+
+        const isHighlighted = highlightedIndices?.includes(index);
+
+        return (
+          <div
+            key={index}
+            className={`barcode-digit ${isHighlighted ? 'highlighted' : ''}`}
+          >
+            {/* Letter (conditionally rendered) */}
+            {showLetters && (
+              <div className="barcode-letter">
+                {letter || '\u00A0'}
+              </div>
+            )}
+            {/* Digit */}
+            <div className={isHighlighted ? 'bold' : ''}>
+              {digit}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+function App() {
+  const [barcode, setBarcode] = useState('')
+  const [parsedData, setParsedData] = useState<ParsedBarcodeData | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [showExplanations, setShowExplanations] = useState(false)
+  const [highlightedDigits, setHighlightedDigits] = useState<number[] | null>(null) // State for highlighted digits
+
+  const handleParse = () => {
+    try {
+      const result = parseBarcode(barcode)
+      setParsedData(result)
+      setError(null)
+      setHighlightedDigits(null) // Reset highlight on new parse
+    } catch (err) {
+      setParsedData(null)
+      setError(err instanceof Error ? err.message : 'An unknown error occurred')
+      setHighlightedDigits(null)
+    }
+  }
+
+  return (
+    <>
+      <h1>Barbated - Barcode Battler II Parser</h1>
+      <div className="input-container">
+        <label htmlFor="barcode-input">Enter Barcode:</label>
+        <input
+          id="barcode-input"
+          type="text"
+          value={barcode}
+          onChange={(e) => setBarcode(e.target.value)}
+          placeholder="Enter barcode digits"
+        />
+        <button onClick={handleParse}>Parse Barcode</button>
+      </div>
+
+      {error && (
+        <div className="error-message">
+          <p>Error: {error}</p>
+        </div>
+      )}
+
+      {/* Conditionally render BarcodeDisplay outside results-container */}
+      {parsedData && (
+        <BarcodeDisplay
+          barcode={parsedData.barcode}
+          highlightedIndices={highlightedDigits}
+          methodUsed={parsedData.methodUsed}
+          showLetters={showExplanations} // Keep showing letters based on explanation toggle
+        />
+      )}
+
+      {/* Keep results-container for the rest */}
+      {parsedData && (
+        <div className="results-container">
+          <div className="explanation-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={showExplanations}
+                onChange={(e) => setShowExplanations(e.target.checked)}
+              />
+              Show Explanations
+            </label>
+          </div>
+          <div className="table-container">
+            <ParsedDataDisplay
+              data={parsedData}
+              showExplanations={showExplanations}
+              setHighlightedDigits={setHighlightedDigits}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+export default App
