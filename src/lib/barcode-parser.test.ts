@@ -1,4 +1,4 @@
-import { parseBarcode, ParsedBarcodeData } from './barcode-parser';
+import { parseBarcode } from './barcode-parser';
 import { testBarcodes } from './test-data/known-barcodes';
 
 describe('Barcode Parser', () => {
