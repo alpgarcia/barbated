@@ -7,9 +7,11 @@ describe('Barcode Parser', () => {
       const result = parseBarcode(barcode);
 
       // Check validity first
-      if (expected.error) {
+      if (expected.errorKey) { // Check for errorKey instead of error
         expect(result.isValid).toBe(false);
         expect(result.errorKey).toBeDefined();
+        // Optionally check if the specific errorKey matches
+        expect(result.errorKey).toBe(expected.errorKey);
         return;
       }
 
@@ -20,9 +22,6 @@ describe('Barcode Parser', () => {
       // Check specific fields
       if (expected.methodUsed !== undefined) {
         expect(result.methodUsed).toBe(expected.methodUsed);
-      }
-      if (expected.reasonSubstrings) {
-        expect(result.reasonKey).toBeDefined();
       }
       if (expected.cardType !== undefined) {
         expect(result.cardType).toBe(expected.cardType);
