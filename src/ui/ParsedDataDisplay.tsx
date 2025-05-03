@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next'; // Import useTranslation
+import { useTranslation } from 'react-i18next';
 import { ParsedBarcodeData, DigitMappingDetail } from '../lib/barcode-parser';
 
 interface ParsedDataDisplayProps {
@@ -9,12 +9,12 @@ interface ParsedDataDisplayProps {
 }
 
 // Helper to flatten the data object for display
-const flattenData = (data: ParsedBarcodeData): Record<string, string | number | boolean | undefined> => {
-  const flat: Record<string, string | number | boolean | undefined> = {};
+const flattenData = (data: ParsedBarcodeData): Record<string, string | number | boolean | undefined | Record<string, any>> => {
+  const flat: Record<string, string | number | boolean | undefined | Record<string, any>> = {};
 
-  // Flatten top-level properties, excluding 'stats'
+  // Flatten top-level properties, excluding 'stats' and context objects
   for (const [key, value] of Object.entries(data)) {
-    if (key !== 'stats') {
+    if (key !== 'stats' && !key.endsWith('Context') && key !== 'digitMappings') {
       flat[key] = value;
     }
   }
@@ -22,19 +22,18 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
   // Flatten stats if they exist
   if (data.stats) {
     for (const [statKey, statValue] of Object.entries(data.stats)) {
-      // Type check for statValue
       if (typeof statValue === 'string' || typeof statValue === 'number' || typeof statValue === 'boolean') {
         flat[`stats.${statKey}`] = statValue;
       } else {
-        // Handle 'unknown' type, e.g., convert to string or assign a default
-        flat[`stats.${statKey}`] = String(statValue); // Example: Convert to string
+        flat[`stats.${statKey}`] = String(statValue);
       }
     }
   }
 
-  const orderedFlat: Record<string, string | number | boolean | undefined> = {};
+  // Reorder
+  const orderedFlat: Record<string, string | number | boolean | undefined | Record<string, any>> = {};
   const preferredOrder = [
-    'barcode', 'isValid', 'error', 'methodUsed', 'reason',
+    'barcode', 'isValid', 'errorKey', 'methodUsed', 'reasonKey',
     'cardType', 'powerUpType', 'stats.hp', 'stats.st', 'stats.df', 'stats.dx', 'stats.pp', 'stats.mp',
     'race', 'occupation', 'flag', 'isHero', 'isSingleUse',
   ];
@@ -53,7 +52,7 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
 };
 
 const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits }) => {
-  const { t } = useTranslation(); // Get the translation function
+  const { t } = useTranslation();
 
   const flatData = flattenData(data);
   const cardPropertyKeys = [
@@ -61,7 +60,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     'race', 'occupation', 'flag', 'isHero', 'isSingleUse',
   ];
   const parsingDetailKeys = [
-    'barcode', 'isValid', 'error', 'methodUsed', 'reason'
+    'barcode', 'isValid', 'errorKey', 'methodUsed', 'reasonKey' // Use reasonKey
   ];
 
   const cardPropertyData = Object.entries(flatData)
@@ -79,7 +78,12 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     if (mappingDetail?.indices) {
       setHighlightedDigits(mappingDetail.indices);
     } else {
-      setHighlightedDigits(null);
+      // Special handling for reason if it has context with indices
+      if (fieldKey === 'reasonKey' && data.reasonContext?.indices) {
+         setHighlightedDigits(data.reasonContext.indices);
+      } else {
+         setHighlightedDigits(null);
+      }
     }
   };
 
@@ -89,27 +93,27 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
 
   const renderValue = (value: unknown): React.ReactNode => {
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      // Use translation for boolean true/false if needed, otherwise String() is fine
       if (typeof value === 'boolean') {
         return value ? t('true') : t('false');
       }
+      // Don't render keys directly as values
+      if (typeof value === 'string' && (value.startsWith('reason') || value.startsWith('error'))) {
+          return ''; // Or some placeholder if needed
+      }
       return String(value);
     } else if (value === null || value === undefined) {
-      return ''; // Or display 'N/A'
+      return '';
     } else {
-      // Optionally handle other types, e.g., stringify objects/arrays for debugging
-      // return JSON.stringify(value);
-      return t('unsupportedValueType'); // Use translation key
+      return t('unsupportedValueType');
     }
   };
 
-  // Map internal keys to translation keys for labels
   const fieldLabelKeys: Record<string, string> = {
     barcode: 'fieldLabelBarcode',
     isValid: 'fieldLabelIsValid',
-    error: 'fieldLabelError',
+    errorKey: 'fieldLabelError', // Changed from error
     methodUsed: 'fieldLabelMethodUsed',
-    reason: 'fieldLabelReason',
+    reasonKey: 'fieldLabelReason', // Changed from reason
     cardType: 'fieldLabelCardType',
     powerUpType: 'fieldLabelPowerUpType',
     'stats.hp': 'fieldLabelHp',
@@ -125,49 +129,85 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     isSingleUse: 'fieldLabelIsSingleUse',
   };
 
-  // Map internal keys to translation keys for static explanations
   const staticExplanationKeys: Record<string, string> = {
     barcode: 'explanationBarcode',
     isValid: 'explanationIsValid',
-    error: 'explanationError',
     methodUsed: 'explanationMethodUsed',
-    reason: 'explanationReason',
   };
 
-  const renderTable = (titleKey: string, tableData: [string, string | number | boolean | undefined][]) => (
+  const renderTable = (titleKey: string, tableData: [string, any][]) => (
     <div style={{ marginBottom: '20px' }}>
-      <h3>{t(titleKey)}</h3> {/* Use translation key for title */}
+      <h3>{t(titleKey)}</h3>
       <table
         className="parsed-data-table"
         onMouseLeave={handleMouseLeaveTable}
       >
         <thead>
           <tr>
-            <th>{t('tableHeaderField')}</th> {/* Use translation key */}
-            <th>{t('tableHeaderValue')}</th> {/* Use translation key */}
-            {showExplanations && <th className="explanation-header">{t('tableHeaderExplanation')}</th>} {/* Use translation key */}
+            <th>{t('tableHeaderField')}</th>
+            <th>{t('tableHeaderValue')}</th>
+            {showExplanations && <th className="explanation-header">{t('tableHeaderExplanation')}</th>}
           </tr>
         </thead>
         <tbody>
           {tableData.map(([key, value]) => {
-            const dynamicExplanation = digitMappings[key]?.explanation;
+            let displayExplanation: string = t('noExplanationAvailable'); // Initialize as string
+            const mappingDetail = digitMappings[key];
             const staticExplanationKey = staticExplanationKeys[key];
-            const fallbackExplanation = t('noExplanationAvailable'); // Use translation key
-            let displayExplanation = dynamicExplanation ?? (staticExplanationKey ? t(staticExplanationKey) : fallbackExplanation);
-            const labelKey = fieldLabelKeys[key] || key; // Get the label key
-            const displayLabel = t(labelKey); // Translate the label
-            const hasMapping = !!digitMappings[key]?.indices;
+            const labelKey = fieldLabelKeys[key] || key;
+            const displayLabel = t(labelKey);
+            let hasMapping = !!mappingDetail?.indices;
 
-            // Always align value cell to the right
-            const valueCellStyle: React.CSSProperties = { textAlign: 'right' };
+            // Get dynamic explanation from digitMappings
+            if (mappingDetail?.explanationKey) {
+              // Ensure the result is treated as a string
+              displayExplanation = String(t(mappingDetail.explanationKey, mappingDetail.explanationContext || {}));
+            }
+            // Get dynamic explanation for reasonKey/errorKey
+            else if (key === 'reasonKey' && data.reasonKey) {
+              // Ensure the result is treated as a string
+              displayExplanation = String(t(data.reasonKey, data.reasonContext || {}));
+              hasMapping = !!data.reasonContext?.indices; // Check if reason context provides indices
+            } else if (key === 'errorKey' && data.errorKey) {
+              // Ensure the result is treated as a string
+              displayExplanation = String(t(data.errorKey, data.errorContext || {}));
+            }
+            // Fallback to static explanation if no dynamic one exists
+            else if (staticExplanationKey) {
+              displayExplanation = t(staticExplanationKey);
+            }
 
-            // Get flag effect explanation using translation
+            // Special case for Flag: Add flag effect text
             if (key === 'flag' && typeof value === 'number') {
               const flagEffectKey = `flagEffects.${value}`;
-              const flagEffectText = t(flagEffectKey, { defaultValue: '' }); // Provide defaultValue to avoid missing key errors
+              // Ensure the result is treated as a string
+              const flagEffectText = String(t(flagEffectKey, { defaultValue: '' }));
               if (flagEffectText) {
                 displayExplanation += ` (${flagEffectText})`;
               }
+            }
+
+            const valueCellStyle: React.CSSProperties = { textAlign: 'right' };
+
+            // Don't render rows for keys if they are just keys (like reasonKey, errorKey)
+            if (key === 'reasonKey' || key === 'errorKey') {
+                if (!showExplanations) return null; // Only show in explanation column
+                return (
+                  <tr
+                    key={key}
+                    className={hasMapping ? 'highlightable-row' : ''}
+                    onMouseEnter={() => handleHighlight(key)}
+                    onClick={() => handleHighlight(key)}
+                  >
+                    <td>{displayLabel}</td>
+                    <td style={valueCellStyle}></td>
+                    {showExplanations && (
+                      <td className="explanation-cell">
+                        {displayExplanation}
+                      </td>
+                    )}
+                  </tr>
+                );
             }
 
             return (
@@ -178,7 +218,6 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
                 onClick={() => handleHighlight(key)}
               >
                 <td>{displayLabel}</td>
-                {/* Apply the style directly */}
                 <td style={valueCellStyle}>{renderValue(value)}</td>
                 {showExplanations && (
                   <td className="explanation-cell">
@@ -195,7 +234,6 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
 
   return (
     <div>
-      {/* Use translation keys for table titles */}
       {cardPropertyData.length > 0 && renderTable('cardPropertiesTitle', cardPropertyData)}
       {parsingDetailData.length > 0 && renderTable('parsingDetailsTitle', parsingDetailData)}
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'; // Import useTranslation
 import './App.css'
 import { parseBarcode, ParsedBarcodeData } from '../lib/barcode-parser'
 import ParsedDataDisplay from './ParsedDataDisplay'
@@ -63,6 +64,7 @@ const BarcodeDisplay: React.FC<BarcodeDisplayProps> = ({ barcode, highlightedInd
 };
 
 function App() {
+  const { t } = useTranslation(); // Get translation function
   const [barcode, setBarcode] = useState('')
   const [parsedData, setParsedData] = useState<ParsedBarcodeData | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -77,29 +79,31 @@ function App() {
       setHighlightedDigits(null) // Reset highlight on new parse
     } catch (err) {
       setParsedData(null)
-      setError(err instanceof Error ? err.message : 'An unknown error occurred')
+      // Use translation key for unknown error, parser errors will be keys now
+      setError(err instanceof Error ? err.message : t('barcodeUnknownError'))
       setHighlightedDigits(null)
     }
   }
 
   return (
     <>
-      <h1>Barbated - Barcode Battler II Parser</h1>
+      <h1>{t('appTitle')}</h1>
       <div className="input-container">
-        <label htmlFor="barcode-input">Enter Barcode:</label>
+        <label htmlFor="barcode-input">{t('barcodeInputLabel')}</label>
         <input
           id="barcode-input"
           type="text"
           value={barcode}
           onChange={(e) => setBarcode(e.target.value)}
-          placeholder="Enter barcode digits"
+          placeholder={t('barcodeInputPlaceholder')} // Translate placeholder
         />
-        <button onClick={handleParse}>Parse Barcode</button>
+        <button onClick={handleParse}>{t('parseButton')}</button>
       </div>
 
       {error && (
         <div className="error-message">
-          <p>Error: {error}</p>
+          {/* Translate the "Error:" prefix and the error message itself if it's a key */}
+          <p>{t('errorPrefix')} {t(error)}</p>
         </div>
       )}
 
@@ -123,7 +127,7 @@ function App() {
                 checked={showExplanations}
                 onChange={(e) => setShowExplanations(e.target.checked)}
               />
-              Show Explanations
+              {t('showExplanationsLabel')} {/* Translate label */}
             </label>
           </div>
           <div className="table-container">

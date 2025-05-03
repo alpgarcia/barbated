@@ -1,4 +1,4 @@
-# Barbated - Barcode Battler II Parser
+# Barbated - Barcode Battler II Editor
 
 This project contains a TypeScript implementation for parsing barcodes according to the card system rules of Barcode Battler II (European version).
 

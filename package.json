@@ -1,7 +1,7 @@
 {
   "name": "barbated",
   "version": "1.0.0",
-  "description": "Barcode Battler II Parser and UI",
+  "description": "Barcode Battler II Editor",
   "main": "dist/lib/barcode-parser.js",
   "type": "module",
   "scripts": {

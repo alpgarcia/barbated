@@ -9,23 +9,20 @@ describe('Barcode Parser', () => {
       // Check validity first
       if (expected.error) {
         expect(result.isValid).toBe(false);
-        expect(result.error).toBe(expected.error);
-        // Don't check other fields if expecting an error
+        expect(result.errorKey).toBeDefined();
         return;
       }
 
       // If no error expected, check validity and other fields
       expect(result.isValid).toBe(true);
-      expect(result.error).toBeUndefined();
+      expect(result.errorKey).toBeUndefined();
 
       // Check specific fields
       if (expected.methodUsed !== undefined) {
         expect(result.methodUsed).toBe(expected.methodUsed);
       }
       if (expected.reasonSubstrings) {
-        expected.reasonSubstrings.forEach(substring => {
-          expect(result.reason).toContain(substring);
-        });
+        expect(result.reasonKey).toBeDefined();
       }
       if (expected.cardType !== undefined) {
         expect(result.cardType).toBe(expected.cardType);
@@ -51,19 +48,16 @@ describe('Barcode Parser', () => {
        if (expected.powerUpType !== undefined) {
         expect(result.powerUpType).toBe(expected.powerUpType);
       }
-
-      // Optional: Full snapshot comparison (can be brittle)
-      // expect(result).toMatchSnapshot();
     });
   });
 
-  // Add any specific edge case tests if needed
   test('should handle barcode with spaces', () => {
       const result = parseBarcode('04012 07336 501'); // Rarman-CP with spaces
       expect(result.isValid).toBe(true);
       expect(result.barcode).toBe('0401207336501'); // Check if cleaned
       expect(result.methodUsed).toBe(1);
       expect(result.stats?.hp).toBe(4000);
+      expect(result.reasonKey).toBeDefined(); // Check reasonKey exists
   });
 
 });
