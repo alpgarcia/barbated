@@ -33,7 +33,7 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
   // Reorder
   const orderedFlat: Record<string, string | number | boolean | undefined | Record<string, any>> = {};
   const preferredOrder = [
-    'barcode', 'isValid', 'errorKey', 'methodUsed', 'reasonKey',
+    'barcode', 'barcodeType', 'isValid', 'errorKey', 'methodUsed', 'reasonKey', // Added barcodeType
     'cardType', 'powerUpType', 'stats.hp', 'stats.st', 'stats.df', 'stats.dx', 'stats.pp', 'stats.mp',
     'race', 'occupation', 'flag', 'isHero', 'isSingleUse',
   ];
@@ -60,7 +60,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     'race', 'occupation', 'flag', 'isHero', 'isSingleUse',
   ];
   const parsingDetailKeys = [
-    'barcode', 'isValid', 'errorKey', 'methodUsed', 'reasonKey' // Use reasonKey
+    'barcode', 'barcodeType', 'isValid', 'errorKey', 'methodUsed', 'reasonKey' // Added barcodeType
   ];
 
   const cardPropertyData = Object.entries(flatData)
@@ -110,6 +110,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
 
   const fieldLabelKeys: Record<string, string> = {
     barcode: 'fieldLabelBarcode',
+    barcodeType: 'fieldLabelBarcodeType', // Added barcodeType
     isValid: 'fieldLabelIsValid',
     errorKey: 'fieldLabelError', // Changed from error
     methodUsed: 'fieldLabelMethodUsed',
@@ -133,6 +134,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     barcode: 'explanationBarcode',
     isValid: 'explanationIsValid',
     methodUsed: 'explanationMethodUsed',
+    // barcodeType explanation is dynamic via digitMappings
   };
 
   const renderTable = (titleKey: string, tableData: [string, any][]) => (

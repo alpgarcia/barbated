@@ -12,6 +12,7 @@ export interface DigitMappingDetail {
  */
 export interface ParsedBarcodeData {
   barcode: string;
+  barcodeType?: 'EAN-8' | 'EAN-13/UPC-A' | 'Unknown'; // Added barcode type
   isValid: boolean;
   errorKey?: string; // Key for translation
   errorContext?: Record<string, any>; // Context for interpolation
@@ -88,19 +89,40 @@ const originalHeroBarcodes = new Set(Object.keys(exceptions).filter(bc => except
 export function parseBarcode(barcode: string): ParsedBarcodeData {
   const cleanedBarcode = barcode.replace(/\s+/g, ''); // Remove spaces if any
   const baseResult: ParsedBarcodeData = { barcode: cleanedBarcode, isValid: false };
+  let barcodeType: ParsedBarcodeData['barcodeType'] = 'Unknown';
+  let barcodeTypeExplanationKey = 'explanationBarcodeTypeUnknown';
 
   // --- Basic Validation (Use keys) ---
   if (!/^\d+$/.test(cleanedBarcode)) {
     return { ...baseResult, errorKey: 'barcodeInvalidChars' };
   }
-  if (cleanedBarcode.length !== 13 && cleanedBarcode.length !== 8) {
-    return { ...baseResult, errorKey: 'barcodeInvalidLength' };
+  if (cleanedBarcode.length === 8) {
+      barcodeType = 'EAN-8';
+      barcodeTypeExplanationKey = 'explanationBarcodeTypeEan8';
+  } else if (cleanedBarcode.length === 13) {
+      barcodeType = 'EAN-13/UPC-A';
+      barcodeTypeExplanationKey = 'explanationBarcodeTypeEan13Upca';
+  } else {
+      return { ...baseResult, errorKey: 'barcodeInvalidLength' };
   }
+
+  // Add barcodeType mapping early
+  const digitMappings: Record<string, DigitMappingDetail> = {
+      'barcodeType': { indices: [], explanationKey: barcodeTypeExplanationKey, explanationContext: { length: cleanedBarcode.length } }
+  };
 
   // --- Check for Hardcoded Exceptions ---
   if (exceptions[cleanedBarcode] && !originalHeroBarcodes.has(cleanedBarcode)) {
       // Return pre-defined Epoch product data directly
-      return { ...baseResult, ...exceptions[cleanedBarcode], isValid: true } as ParsedBarcodeData; // Cast needed due to partial type
+      // Merge early mappings with exception data
+      const exceptionData = exceptions[cleanedBarcode];
+      return {
+          ...baseResult,
+          ...exceptionData,
+          isValid: true,
+          barcodeType, // Add determined type
+          digitMappings: { ...digitMappings, ...exceptionData.digitMappings } // Merge mappings
+      } as ParsedBarcodeData;
   }
 
   let methodUsed: 1 | 2;
@@ -109,12 +131,13 @@ export function parseBarcode(barcode: string): ParsedBarcodeData {
   let parsedData: Partial<ParsedBarcodeData> = {};
 
   // --- Determine Method (Use keys and context) ---
-  if (cleanedBarcode.length === 8) {
+  if (barcodeType === 'EAN-8') {
     methodUsed = 2;
     reasonKey = 'reasonMethod2Ean8';
     const paddedBarcode = '00000' + cleanedBarcode;
-    parsedData = parseMethod2(paddedBarcode, reasonKey);
-  } else { // 13 digits
+    // Pass existing mappings to Method 2
+    parsedData = parseMethod2(paddedBarcode, reasonKey, undefined, digitMappings);
+  } else { // EAN-13/UPC-A
     const A = safeParseInt(cleanedBarcode[0]);
     const C = safeParseInt(cleanedBarcode[2]);
     const J = safeParseInt(cleanedBarcode[9]);
@@ -123,11 +146,15 @@ export function parseBarcode(barcode: string): ParsedBarcodeData {
       methodUsed = 2;
       reasonKey = 'reasonMethod1Rejected';
       reasonContext = { A, C, J };
-      parsedData = parseMethod2(cleanedBarcode, reasonKey, reasonContext);
+      // Pass existing mappings to Method 2
+      parsedData = parseMethod2(cleanedBarcode, reasonKey, reasonContext, digitMappings);
     } else {
       methodUsed = 1;
       reasonKey = 'reasonMethod1Met';
-      parsedData = parseMethod1(cleanedBarcode, reasonKey);
+      // Pass A, C, J for the explanation context
+      reasonContext = { A, C, J };
+      // Pass existing mappings and context to Method 1
+      parsedData = parseMethod1(cleanedBarcode, reasonKey, reasonContext, digitMappings);
     }
   }
 
@@ -137,40 +164,45 @@ export function parseBarcode(barcode: string): ParsedBarcodeData {
       parsedData.methodUsed = 'Exception';
       parsedData.reasonKey = exceptionData.reasonKey;
       parsedData.reasonContext = exceptionData.reasonContext;
+      // Ensure digitMappings exists before modifying
+      parsedData.digitMappings = parsedData.digitMappings || {};
       if (parsedData.stats) {
           parsedData.flag = 50;
           parsedData.isHero = true;
           // Update digit mapping for flag and isHero if they exist
-          if (parsedData.digitMappings) {
-              // Find original flag indices (might be complex if Method 2 was initially used)
-              const originalFlagIndices = parsedData.digitMappings['flag']?.indices || [];
-              parsedData.digitMappings['flag'] = {
-                  indices: originalFlagIndices, // Keep original indices for reference?
-                  explanationKey: 'explanationFlagMethod2Hero', // Assuming Method 2 hero flag explanation is suitable
-                  explanationContext: { flag: 50, T: '?' } // T is unknown here, maybe omit or mark
-              };
-              parsedData.digitMappings['isHero'] = {
-                  indices: [], // No specific digits determine this override
-                  explanationKey: 'explanationIsHeroMethod2', // Assuming Method 2 hero explanation is suitable
-                  explanationContext: { isHero: true, T: '?' }
-              };
-          }
+          // Find original flag indices (might be complex if Method 2 was initially used)
+          const originalFlagIndices = parsedData.digitMappings['flag']?.indices || [];
+          parsedData.digitMappings['flag'] = {
+              indices: originalFlagIndices, // Keep original indices for reference?
+              explanationKey: 'explanationFlagMethod2Hero', // Assuming Method 2 hero flag explanation is suitable
+              explanationContext: { flag: 50, T: '?' } // T is unknown here, maybe omit or mark
+          };
+          parsedData.digitMappings['isHero'] = {
+              indices: [], // No specific digits determine this override
+              explanationKey: 'explanationIsHeroMethod2', // Assuming Method 2 hero explanation is suitable
+              explanationContext: { isHero: true, T: '?' }
+          };
       }
   }
 
   return {
     ...baseResult,
     isValid: true,
+    barcodeType, // Include barcodeType in final result
     methodUsed: parsedData.methodUsed || methodUsed,
     reasonKey: parsedData.reasonKey || reasonKey,
     reasonContext: parsedData.reasonContext || reasonContext,
     ...parsedData,
+    // Ensure digitMappings from parsing function are merged correctly
+    digitMappings: { ...digitMappings, ...parsedData.digitMappings },
   };
 }
 
 // --- Method 1 Implementation (Update explanations to keys/context) ---
-function parseMethod1(barcode: string, reasonKey: string, reasonContext?: Record<string, any>): Partial<ParsedBarcodeData> {
-  const digitMappings: Record<string, DigitMappingDetail> = {};
+// Accept initial digitMappings and reasonContext
+function parseMethod1(barcode: string, reasonKey: string, reasonContext: Record<string, any>, initialDigitMappings: Record<string, DigitMappingDetail>): Partial<ParsedBarcodeData> {
+  // Start with initial mappings (e.g., barcodeType)
+  const digitMappings: Record<string, DigitMappingDetail> = { ...initialDigitMappings };
 
   const A = safeParseInt(barcode[0]);
   const B = safeParseInt(barcode[1]);
@@ -387,8 +419,10 @@ function parseMethod1(barcode: string, reasonKey: string, reasonContext?: Record
 }
 
 // --- Method 2 Implementation (Update explanations to keys/context) ---
-function parseMethod2(barcode: string, reasonKey: string, reasonContext?: Record<string, any>): Partial<ParsedBarcodeData> {
-  const digitMappings: Record<string, DigitMappingDetail> = {};
+// Accept initial digitMappings
+function parseMethod2(barcode: string, reasonKey: string, reasonContext: Record<string, any> | undefined, initialDigitMappings: Record<string, DigitMappingDetail>): Partial<ParsedBarcodeData> {
+  // Start with initial mappings (e.g., barcodeType)
+  const digitMappings: Record<string, DigitMappingDetail> = { ...initialDigitMappings };
   const len = barcode.length;
 
   const pIdx = len - 6;
