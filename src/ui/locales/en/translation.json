@@ -1,6 +1,7 @@
 {
   "appTitle": "Barbated - Barcode Battler II Editor",
   "barcodeInputLabel": "Enter Barcode:",
+  "barcodeInputPlaceholder": "e.g., 4905040352521",
   "parseButton": "Parse Barcode",
   "showExplanationsLabel": "Show Explanations",
   "errorPrefix": "Error:",
