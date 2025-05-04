@@ -3,6 +3,7 @@
   "barcodeInputLabel": "Enter Barcode:",
   "barcodeInputPlaceholder": "e.g., 4905040352521",
   "parseButton": "Parse Barcode",
+  "downloadBarcodeButton": "Download Barcode",
   "showExplanationsLabel": "Show Explanations",
   "errorPrefix": "Error:",
   "true": "Yes",

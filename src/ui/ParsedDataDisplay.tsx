@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react'; // Added useEffect, useRef
 import { useTranslation } from 'react-i18next';
+import JsBarcode from 'jsbarcode'; // Import JsBarcode
 import { ParsedBarcodeData, DigitMappingDetail } from '../lib/barcode-parser';
 
 interface ParsedDataDisplayProps {
@@ -53,6 +54,7 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
 
 const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits }) => {
   const { t } = useTranslation();
+  const barcodeRef = useRef<SVGSVGElement>(null); // Ref for the SVG element
 
   const flatData = flattenData(data);
   const cardPropertyKeys = [
@@ -62,6 +64,49 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   const parsingDetailKeys = [
     'barcode', 'barcodeType', 'isValid', 'errorKey', 'methodUsed', 'reasonKey' // Added barcodeType
   ];
+
+  // Effect to generate barcode when data.barcode changes
+  useEffect(() => {
+    if (data.barcode && barcodeRef.current) {
+      try {
+        JsBarcode(barcodeRef.current, data.barcode, {
+          format: data.barcode.length === 8 ? "EAN8" : "EAN13", // Auto-detect format
+          displayValue: true, // Show the numbers below the barcode
+          // Default size options, can be customized later
+          width: 2,
+          height: 60,
+          margin: 10,
+          fontSize: 14,
+        });
+      } catch (e) {
+        // Handle potential errors during barcode generation (e.g., invalid format)
+        console.error("Barcode generation failed:", e);
+        // Optionally clear the SVG or display an error message
+        if (barcodeRef.current) {
+            barcodeRef.current.innerHTML = ''; // Clear previous barcode on error
+        }
+      }
+    } else if (barcodeRef.current) {
+        barcodeRef.current.innerHTML = ''; // Clear barcode if no data.barcode
+    }
+  }, [data.barcode]); // Rerun effect when barcode string changes
+
+  // Function to handle barcode download
+  const handleDownloadBarcode = () => {
+    if (barcodeRef.current && data.barcode && data.isValid) { // Check validity
+      const svgElement = barcodeRef.current;
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `barcode-${data.barcode}.svg`; // Set filename
+      document.body.appendChild(link); // Required for Firefox
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url); // Clean up
+    }
+  };
 
   const cardPropertyData = Object.entries(flatData)
     .filter(([key]) => cardPropertyKeys.includes(key))
@@ -236,6 +281,17 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
 
   return (
     <div>
+      {/* Add SVG element and download button */}
+      {data.barcode && data.isValid && ( // Only show if barcode is valid
+        <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+          <svg ref={barcodeRef}></svg>
+          <div> {/* Wrap button for better spacing/styling if needed */}
+            <button onClick={handleDownloadBarcode} style={{ marginTop: '10px' }}>
+              {t('downloadBarcodeButton')} {/* Make sure this key exists in translation files */}
+            </button>
+          </div>
+        </div>
+      )}
       {cardPropertyData.length > 0 && renderTable('cardPropertiesTitle', cardPropertyData)}
       {parsingDetailData.length > 0 && renderTable('parsingDetailsTitle', parsingDetailData)}
     </div>
