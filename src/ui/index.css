@@ -1,3 +1,10 @@
+@font-face {
+  font-family: 'Anton SC';
+  src: url('../../fonts/Anton_SC/AntonSC-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

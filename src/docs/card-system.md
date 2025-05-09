@@ -274,4 +274,32 @@ Compatibility between warriors (Soldiers/Wizards) and items (Power-Ups) depends 
 This image was borrowed from the [Barcode Battler Museum](https://barcodebattler.co.uk/).
 
 ## Technical Specifications
-*[This section will be completed with technical details about physical cards and barcodes]*
+
+Cards size: 86mm x 59mm
+Card thickness: 3mm
+
+Barcode size: 40mm x 10mm
+
+**Warrior cards front**:
+Top title row (card type aligned on the top right corner, below that appears "> Insert", being '>' a filled triangle and aligned to the type): 12mm
+Image: 37mm
+Bottom row: 10mm
+
+**Warrior cards back**:
+Top row (Barcode Battler logo and name): 15mm
+Card description: 32mm
+Bottom row (where the barcode is placed): 12mm
+
+**Barcode is not centered**, but padded 22mm from the left and 24mm from the right. It is also aligned to the bottom of the card and rotated 180 degrees (upside down) to be read from right to left.
+
+**Item cards front**:
+Top title row (title aligned to the left, then card type aligned on the top right corner, below that appears "> Insert", being '>' a filled triangle and aligned to the type): 17mm
+Image: 32mm
+Bottom row (P* with the number of points the card provides, aligned to the left): 10mm
+
+**Item cards back**:
+Top row (Barcode Battler logo and name): 14mm
+Card description: 32mm
+Bottom row (where the barcode is placed): 13mm
+
+**Barcode is not centered**, but padded 22mm from the left and 24mm from the right. It is also aligned to the bottom of the card and rotated 180 degrees (upside down) to be read from right to left.

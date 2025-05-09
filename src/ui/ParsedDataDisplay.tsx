@@ -1,7 +1,11 @@
 import React, { useEffect, useRef } from 'react'; // Added useEffect, useRef
 import { useTranslation } from 'react-i18next';
 import JsBarcode from 'jsbarcode'; // Import JsBarcode
+import { jsPDF } from 'jspdf'; // Importación para PDF
 import { ParsedBarcodeData, DigitMappingDetail } from '../lib/barcode-parser';
+import antonScFontDataUrl from '../../fonts/Anton_SC/AntonSC-Regular.ttf?inline'; // Importación para la fuente
+
+const UI_SCALE_FACTOR = 3; // Define at component/module level
 
 interface ParsedDataDisplayProps {
   data: ParsedBarcodeData;
@@ -54,9 +58,422 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
 
 const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits }) => {
   const { t } = useTranslation();
-  const barcodeRef = useRef<SVGSVGElement>(null); // Ref for the SVG element
+  const barcodeUiCardRef = useRef<SVGSVGElement>(null);
 
   const flatData = flattenData(data);
+
+  // Generates the *inner content* of the card SVG (rect and barcode group)
+  // All internal dimensions are in scaled pixels based on UI_SCALE_FACTOR
+  const generateCardSvgContent = ( 
+    barcodeValue: string,
+    barcodeFormat: "EAN8" | "EAN13"
+  ): string => {
+    // Base MM dimensions (used for calculating scaled pixel values)
+    const cardWidthMM = 86; // Standard card width
+    const cardHeightMM = 59; // Needed for barcode Y position calculation
+    const barcodeOnCardWidthMM = 40;
+    const barcodeOnCardHeightMM = 10;
+    const barcodePaddingLeftMM = 22;
+    const cardCornerRadiusMM = 2;
+
+    // Dimensions in scaled pixels for internal rendering
+    const fullCardWidthPx = cardWidthMM * UI_SCALE_FACTOR;
+    const fullCardHeightPx = cardHeightMM * UI_SCALE_FACTOR; 
+    const barcodeOnCardWidthPx = barcodeOnCardWidthMM * UI_SCALE_FACTOR;
+    const barcodeOnCardHeightPx = barcodeOnCardHeightMM * UI_SCALE_FACTOR;
+    const barcodePaddingLeftPx = barcodePaddingLeftMM * UI_SCALE_FACTOR;
+    const cardCornerRadiusPx = cardCornerRadiusMM * UI_SCALE_FACTOR;
+
+    // Calculate barcode position based on the full card height in scaled pixels
+    const barcodeXUnrotatedPx = barcodePaddingLeftPx;
+    const barcodeYUnrotatedPx = fullCardHeightPx - barcodeOnCardHeightPx;
+
+    // --- Add separator lines ---
+    let separatorLinesSvg = '';
+    const lineInsetPx = 3 * UI_SCALE_FACTOR; // Small inset for lines from card edges
+    const lineStrokeColor = "#cccccc"; // Light grey for subtlety
+    const lineStrokeWidth = "0.75px"; // Thin lines
+
+    const currentCardType = data.cardType; // Access cardType from component props
+
+    const lineX1 = lineInsetPx;
+    const lineX2 = fullCardWidthPx - lineInsetPx;
+
+    let titleTextSvg = '';
+    const titleFontSizePx = 5 * UI_SCALE_FACTOR; // Font size for the title
+    const largeBFontSizePx = titleFontSizePx * 1.5; // Font size for the 'B's
+    const spaceAdjustmentDx = 0.5 * UI_SCALE_FACTOR; // Adjust this value to control the space
+
+    // Estimate cap height ratio for Anton SC (all caps font). This may need tuning.
+    const capHeightRatio = 0.82; 
+
+    // Use alphabetic baseline for more consistent rendering across SVG viewers.
+    const commonTextAttributes = `font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="black" text-anchor="middle" dominant-baseline="alphabetic"`;
+
+    if (currentCardType === 'Soldier' || currentCardType === 'Wizard') {
+      // Warrior cards back: Top row 15mm, Card description 32mm
+      const yPos1WarriorPx = 15 * UI_SCALE_FACTOR;
+      const yPos2WarriorPx = (15 + 32) * UI_SCALE_FACTOR;
+      separatorLinesSvg = `
+  <line x1="${lineX1}" y1="${yPos1WarriorPx}" x2="${lineX2}" y2="${yPos1WarriorPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
+  <line x1="${lineX1}" y1="${yPos2WarriorPx}" x2="${lineX2}" y2="${yPos2WarriorPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
+
+      const topSectionCenterYPx = yPos1WarriorPx / 2;
+      // Adjust Y for alphabetic baseline to center the text block based on cap height of the smaller letters.
+      const titleActualBaselineYPx = topSectionCenterYPx + (titleFontSizePx * capHeightRatio / 2); 
+      
+      titleTextSvg = `<text x="${fullCardWidthPx / 2}" y="${titleActualBaselineYPx}" ${commonTextAttributes}>` +
+                      `<tspan font-size="${largeBFontSizePx}px">B</tspan>` +
+                      `<tspan font-size="${titleFontSizePx}px">arcode</tspan>` +
+                      `<tspan dx="${spaceAdjustmentDx}px" font-size="${largeBFontSizePx}px">B</tspan>` +
+                      `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
+                    `</text>`;
+
+    } else if (currentCardType === 'Weapon' || currentCardType === 'Armour' || currentCardType === 'PowerUp') {
+      // Item cards back: Top row 14mm, Card description 32mm
+      const yPos1ItemPx = 14 * UI_SCALE_FACTOR;
+      const yPos2ItemPx = (14 + 32) * UI_SCALE_FACTOR;
+      separatorLinesSvg = `
+  <line x1="${lineX1}" y1="${yPos1ItemPx}" x2="${lineX2}" y2="${yPos1ItemPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
+  <line x1="${lineX1}" y1="${yPos2ItemPx}" x2="${lineX2}" y2="${yPos2ItemPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
+      
+      const topSectionCenterYPx = yPos1ItemPx / 2;
+      // Adjust Y for alphabetic baseline to center the text block based on cap height of the smaller letters.
+      const titleActualBaselineYPx = topSectionCenterYPx + (titleFontSizePx * capHeightRatio / 2);
+
+      titleTextSvg = `<text x="${fullCardWidthPx / 2}" y="${titleActualBaselineYPx}" ${commonTextAttributes}>` +
+                      `<tspan font-size="${largeBFontSizePx}px">B</tspan>` +
+                      `<tspan font-size="${titleFontSizePx}px">arcode</tspan>` +
+                      `<tspan dx="${spaceAdjustmentDx}px" font-size="${largeBFontSizePx}px">B</tspan>` +
+                      `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
+                    `</text>`;
+    }
+    // --- End of separator lines ---
+
+    const tempJsBarcodeSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const jsBarcodeOptions: JsBarcode.Options = {
+      format: barcodeFormat,
+      displayValue: false,
+      margin: 0,
+      height: 40, // Px height for JsBarcode internal rendering (bars themselves)
+      fontSize: 0, // Changed from 12
+      textMargin: 0, // Changed from 2
+      width: 2,
+    };
+
+    try {
+      JsBarcode(tempJsBarcodeSvgElement, barcodeValue, jsBarcodeOptions);
+    } catch (e) {
+      console.error("JsBarcode generation failed inside helper:", e);
+      return '';
+    }
+
+    const actualGeneratedBarcodeWidthPx = parseFloat(tempJsBarcodeSvgElement.getAttribute('width') || '0');
+    const actualGeneratedBarcodeHeightPxByAttr = parseFloat(tempJsBarcodeSvgElement.getAttribute('height') || '0');
+    const jsBarcodeInnerContent = tempJsBarcodeSvgElement.innerHTML;
+
+    if (actualGeneratedBarcodeWidthPx === 0 || actualGeneratedBarcodeHeightPxByAttr === 0) {
+        console.error("JsBarcode generated an SVG with zero dimensions. Width:", actualGeneratedBarcodeWidthPx, "Height:", actualGeneratedBarcodeHeightPxByAttr);
+        return '';
+    }
+
+    const barcodeContentEffectiveHeightPx = 
+      jsBarcodeOptions.displayValue === false && jsBarcodeOptions.height
+        ? jsBarcodeOptions.height 
+        : actualGeneratedBarcodeHeightPxByAttr;
+
+    // Returns the inner content: a rect for the card background, title text, separator lines, and the barcode group
+    // The parent SVG will define the overall size and viewBox for scaling.
+    return `
+  <rect width="100%" height="100%" fill="white" stroke="black" stroke-width="1px" rx="${cardCornerRadiusPx}px" ry="${cardCornerRadiusPx}px" />
+  ${titleTextSvg}
+  ${separatorLinesSvg}
+  <g transform="translate(${barcodeXUnrotatedPx}, ${barcodeYUnrotatedPx}) rotate(180 ${barcodeOnCardWidthPx / 2} ${barcodeOnCardHeightPx / 2})">
+    <svg
+      width="${barcodeOnCardWidthPx}"
+      height="${barcodeOnCardHeightPx}"
+      viewBox="0 0 ${actualGeneratedBarcodeWidthPx} ${barcodeContentEffectiveHeightPx}"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      ${jsBarcodeInnerContent}
+    </svg>
+  </g>`;
+  };
+
+  useEffect(() => {
+    const svgContainer = barcodeUiCardRef.current;
+    if (data.barcode && svgContainer && data.isValid) {
+      try {
+        const cardSvgContent = generateCardSvgContent(
+          data.barcode,
+          data.barcode.length === 8 ? "EAN8" : "EAN13"
+        );
+        
+        if (cardSvgContent) {
+          const cardViewWidthPx = 86 * UI_SCALE_FACTOR;
+          const cardViewHeightPx = 59 * UI_SCALE_FACTOR;
+
+          svgContainer.setAttribute('width', cardViewWidthPx.toString());
+          svgContainer.setAttribute('height', cardViewHeightPx.toString());
+          svgContainer.setAttribute('viewBox', `0 0 ${cardViewWidthPx} ${cardViewHeightPx}`);
+          svgContainer.innerHTML = cardSvgContent; // Set the generated inner content
+        } else {
+          svgContainer.innerHTML = '';
+        }
+
+      } catch (e) {
+        console.error("UI Card/Barcode generation failed:", e);
+        svgContainer.innerHTML = '';
+      }
+    } else if (svgContainer) {
+      svgContainer.innerHTML = '';
+    }
+  }, [data.barcode, data.isValid, data.barcode?.length]); // Added data.barcode.length to dependencies
+
+  const handleDownloadBarcode = () => {
+    if (data.barcode && data.isValid) {
+      try {
+        const cardSvgContent = generateCardSvgContent(
+          data.barcode,
+          data.barcode.length === 8 ? "EAN8" : "EAN13"
+        );
+
+        if (!cardSvgContent) {
+          console.error("Failed to generate SVG content for download.");
+          return;
+        }
+
+        const cardWidthMM = 86;
+        const cardHeightMM = 59;
+        const downloadViewBoxWidthPx = cardWidthMM * UI_SCALE_FACTOR;
+        const downloadViewBoxHeightPx = cardHeightMM * UI_SCALE_FACTOR;
+
+        const fontDefs = `
+  <defs>
+    <style type="text/css">
+      <![CDATA[
+        @font-face {
+          font-family: 'Anton SC';
+          src: url(${antonScFontDataUrl}) format('truetype');
+          font-weight: normal;
+          font-style: normal;
+        }
+      ]]>
+    </style>
+  </defs>`;
+        
+        const finalCardSvgString = `
+<svg
+  width="${cardWidthMM}mm"
+  height="${cardHeightMM}mm"
+  viewBox="0 0 ${downloadViewBoxWidthPx} ${downloadViewBoxHeightPx}"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  ${fontDefs}
+  ${cardSvgContent}
+</svg>`;
+
+        const blob = new Blob([finalCardSvgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `barcode-card-${data.barcode}.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        console.error("Barcode card download failed:", e);
+      }
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (data.barcode && data.isValid) {
+      try {
+        const cardSvgContent = generateCardSvgContent(
+          data.barcode,
+          data.barcode.length === 8 ? "EAN8" : "EAN13"
+        );
+
+        if (!cardSvgContent) {
+          console.error("Failed to generate SVG content for PDF download.");
+          return;
+        }
+
+        const cardWidthMM = 86;
+        const cardHeightMM = 59;
+
+        // Dimensions for the SVG's viewBox, based on UI_SCALE_FACTOR
+        // This matches the coordinate system of generateCardSvgContent
+        const svgViewBoxWidth = cardWidthMM * UI_SCALE_FACTOR;
+        const svgViewBoxHeight = cardHeightMM * UI_SCALE_FACTOR;
+
+        // Target DPI for export
+        const targetDpi = 300;
+        const cardWidthInches = cardWidthMM / 25.4;
+        const cardHeightInches = cardHeightMM / 25.4;
+
+        const exportCanvasWidth = Math.round(cardWidthInches * targetDpi);
+        const exportCanvasHeight = Math.round(cardHeightInches * targetDpi);
+
+        const fontDefs = `
+  <defs>
+    <style type="text/css">
+      <![CDATA[
+        @font-face {
+          font-family: 'Anton SC';
+          src: url(${antonScFontDataUrl}) format('truetype');
+          font-weight: normal;
+          font-style: normal;
+        }
+      ]]>
+    </style>
+  </defs>`;
+        
+        const finalSvgStringForRender = `
+<svg
+  width="${exportCanvasWidth}"
+  height="${exportCanvasHeight}"
+  viewBox="0 0 ${svgViewBoxWidth} ${svgViewBoxHeight}"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  ${fontDefs}
+  ${cardSvgContent}
+</svg>`;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = exportCanvasWidth;
+        canvas.height = exportCanvasHeight;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          console.error("Could not get canvas context for PDF generation.");
+          return;
+        }
+
+        const img = new Image();
+        const svgBlob = new Blob([finalSvgStringForRender], {type: 'image/svg+xml;charset=utf-8'});
+        const url = URL.createObjectURL(svgBlob);
+
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, exportCanvasWidth, exportCanvasHeight);
+          URL.revokeObjectURL(url);
+          const imgData = canvas.toDataURL('image/png'); 
+          
+          const pdf = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: [cardWidthMM, cardHeightMM]
+          });
+
+          pdf.addImage(imgData, 'PNG', 0, 0, cardWidthMM, cardHeightMM);
+          pdf.save(`barcode-card-${data.barcode}.pdf`);
+        };
+
+        img.onerror = (e) => {
+          console.error("Error loading SVG image for PDF conversion:", e);
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+
+      } catch (e) {
+        console.error("Barcode card PDF download failed:", e);
+      }
+    }
+  };
+
+  const handleDownloadPng = () => {
+    if (data.barcode && data.isValid) {
+      try {
+        const cardSvgContent = generateCardSvgContent(
+          data.barcode,
+          data.barcode.length === 8 ? "EAN8" : "EAN13"
+        );
+
+        if (!cardSvgContent) {
+          console.error("Failed to generate SVG content for PNG download.");
+          return;
+        }
+
+        const cardWidthMM = 86;
+        const cardHeightMM = 59; 
+
+        const svgViewBoxWidth = cardWidthMM * UI_SCALE_FACTOR;
+        const svgViewBoxHeight = cardHeightMM * UI_SCALE_FACTOR;
+
+        const targetDpi = 300;
+        const cardWidthInches = cardWidthMM / 25.4;
+        const cardHeightInches = cardHeightMM / 25.4;
+
+        const exportCanvasWidth = Math.round(cardWidthInches * targetDpi);
+        const exportCanvasHeight = Math.round(cardHeightInches * targetDpi);
+
+        const fontDefs = `
+  <defs>
+    <style type="text/css">
+      <![CDATA[
+        @font-face {
+          font-family: 'Anton SC';
+          src: url(${antonScFontDataUrl}) format('truetype');
+          font-weight: normal;
+          font-style: normal;
+        }
+      ]]>
+    </style>
+  </defs>`;
+
+        const finalSvgStringForRender = `
+<svg
+  width="${exportCanvasWidth}"
+  height="${exportCanvasHeight}"
+  viewBox="0 0 ${svgViewBoxWidth} ${svgViewBoxHeight}"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  ${fontDefs}
+  ${cardSvgContent}
+</svg>`;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = exportCanvasWidth;
+        canvas.height = exportCanvasHeight;
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) {
+          console.error("Could not get canvas context for PNG generation.");
+          return;
+        }
+
+        const img = new Image();
+        const svgBlob = new Blob([finalSvgStringForRender], {type: 'image/svg+xml;charset=utf-8'});
+        const url = URL.createObjectURL(svgBlob);
+
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, exportCanvasWidth, exportCanvasHeight);
+          URL.revokeObjectURL(url);
+          const pngUrl = canvas.toDataURL('image/png');
+          
+          const link = document.createElement('a');
+          link.href = pngUrl;
+          link.download = `barcode-card-${data.barcode}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+
+        img.onerror = (e) => {
+          console.error("Error loading SVG image for PNG conversion:", e);
+          URL.revokeObjectURL(url);
+        };
+
+        img.src = url;
+
+      } catch (e) {
+        console.error("Barcode card PNG download failed:", e);
+      }
+    }
+  };
+
   const cardPropertyKeys = [
     'cardType', 'powerUpType', 'stats.hp', 'stats.st', 'stats.df', 'stats.dx', 'stats.pp', 'stats.mp',
     'race', 'occupation', 'flag', 'isHero', 'isSingleUse',
@@ -64,49 +481,6 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   const parsingDetailKeys = [
     'barcode', 'barcodeType', 'isValid', 'errorKey', 'methodUsed', 'reasonKey' // Added barcodeType
   ];
-
-  // Effect to generate barcode when data.barcode changes
-  useEffect(() => {
-    if (data.barcode && barcodeRef.current) {
-      try {
-        JsBarcode(barcodeRef.current, data.barcode, {
-          format: data.barcode.length === 8 ? "EAN8" : "EAN13", // Auto-detect format
-          displayValue: true, // Show the numbers below the barcode
-          // Default size options, can be customized later
-          width: 2,
-          height: 60,
-          margin: 10,
-          fontSize: 14,
-        });
-      } catch (e) {
-        // Handle potential errors during barcode generation (e.g., invalid format)
-        console.error("Barcode generation failed:", e);
-        // Optionally clear the SVG or display an error message
-        if (barcodeRef.current) {
-            barcodeRef.current.innerHTML = ''; // Clear previous barcode on error
-        }
-      }
-    } else if (barcodeRef.current) {
-        barcodeRef.current.innerHTML = ''; // Clear barcode if no data.barcode
-    }
-  }, [data.barcode]); // Rerun effect when barcode string changes
-
-  // Function to handle barcode download
-  const handleDownloadBarcode = () => {
-    if (barcodeRef.current && data.barcode && data.isValid) { // Check validity
-      const svgElement = barcodeRef.current;
-      const svgData = new XMLSerializer().serializeToString(svgElement);
-      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `barcode-${data.barcode}.svg`; // Set filename
-      document.body.appendChild(link); // Required for Firefox
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url); // Clean up
-    }
-  };
 
   const cardPropertyData = Object.entries(flatData)
     .filter(([key]) => cardPropertyKeys.includes(key))
@@ -281,13 +655,18 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
 
   return (
     <div>
-      {/* Add SVG element and download button */}
-      {data.barcode && data.isValid && ( // Only show if barcode is valid
+      {data.barcode && data.isValid && (
         <div style={{ marginBottom: '20px', textAlign: 'center' }}>
-          <svg ref={barcodeRef}></svg>
-          <div> {/* Wrap button for better spacing/styling if needed */}
+          <svg ref={barcodeUiCardRef}></svg>
+          <div>
             <button onClick={handleDownloadBarcode} style={{ marginTop: '10px' }}>
-              {t('downloadBarcodeButton')} {/* Make sure this key exists in translation files */}
+              {t('downloadCardButtonSvg')}
+            </button>
+            <button onClick={handleDownloadPdf} style={{ marginTop: '10px', marginLeft: '10px' }}>
+              {t('downloadCardButtonPdf')}
+            </button>
+            <button onClick={handleDownloadPng} style={{ marginTop: '10px', marginLeft: '10px' }}>
+              {t('downloadCardButtonPng')}
             </button>
           </div>
         </div>
