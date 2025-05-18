@@ -280,10 +280,17 @@ Card thickness: 3mm
 
 Barcode size: 40mm x 10mm
 
+**Application Note:** For the purpose of this application, the front layout of all card types (Warrior, Item, etc.) will be unified to use the Warrior card front specifications. Specifically, the dimensions will be: Top row: 12mm, Image: 37mm, and Bottom row: 10mm. This is a deviation from the original physical cards which had slight variations between types.
+
+Similarly, the back layout of all card types will be unified to use the Item card back specifications: Top row: 14mm, Description area: 32mm, and Bottom row (barcode area): 13mm.
+
+The barcode height is also increased to take advantage of the space available on the card.
+
 **Warrior cards front**:
-Top title row (card type aligned on the top right corner, below that appears "> Insert", being '>' a filled triangle and aligned to the type): 12mm
+Top title row (title aligned to the left, card type aligned on the top right corner, below that appears "> Insert", being '>' a filled triangle and aligned to the type): 12mm
 Image: 37mm
 Bottom row: 10mm
+Bottom row: the text "HP <number of points>" where <number of points> is the HP value the card provides, aligned to the left): 10mm
 
 **Warrior cards back**:
 Top row (Barcode Battler logo and name): 15mm
@@ -295,7 +302,7 @@ Bottom row (where the barcode is placed): 12mm
 **Item cards front**:
 Top title row (title aligned to the left, then card type aligned on the top right corner, below that appears "> Insert", being '>' a filled triangle and aligned to the type): 17mm
 Image: 32mm
-Bottom row (P* with the number of points the card provides, aligned to the left): 10mm
+Bottom row (Type-acronym-and number of points the card provides, aligned to the left): 10mm
 
 **Item cards back**:
 Top row (Barcode Battler logo and name): 14mm

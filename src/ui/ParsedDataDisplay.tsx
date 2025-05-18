@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import JsBarcode from 'jsbarcode'; // Import JsBarcode
 import { jsPDF } from 'jspdf'; // Importación para PDF
 import { ParsedBarcodeData, DigitMappingDetail } from '../lib/barcode-parser';
-import antonScFontDataUrl from '../../fonts/Anton_SC/AntonSC-Regular.ttf?inline'; // Importación para la fuente
+import antonScFontDataUrl from '../assets/fonts/Anton_SC/AntonSC-Regular.ttf?inline'; // Importación para la fuente
 
 const UI_SCALE_FACTOR = 3; // Define at component/module level
 
@@ -58,21 +58,24 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
 
 const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits }) => {
   const { t } = useTranslation();
-  const barcodeUiCardRef = useRef<SVGSVGElement>(null);
+  const barcodeUiCardBackRef = useRef<SVGSVGElement>(null); // Renamed for clarity
+  const barcodeUiCardFrontRef = useRef<SVGSVGElement>(null); // New ref for the front
 
   const flatData = flattenData(data);
 
-  // Generates the *inner content* of the card SVG (rect and barcode group)
-  // All internal dimensions are in scaled pixels based on UI_SCALE_FACTOR
-  const generateCardSvgContent = ( 
+  // Memoize generateCardSvgContent to stabilize its identity if its dependencies are stable
+  // This assumes UI_SCALE_FACTOR, capHeightRatio etc. are stable (module constants or similar)
+  // and `t` from useTranslation is stable.
+  const generateCardSvgContent = React.useCallback((
     barcodeValue: string,
-    barcodeFormat: "EAN8" | "EAN13"
+    barcodeFormat: "EAN8" | "EAN13",
+    cardSide: 'front' | 'back'
   ): string => {
     // Base MM dimensions (used for calculating scaled pixel values)
     const cardWidthMM = 86; // Standard card width
     const cardHeightMM = 59; // Needed for barcode Y position calculation
     const barcodeOnCardWidthMM = 40;
-    const barcodeOnCardHeightMM = 10;
+    const barcodeOnCardHeightMM = 12;
     const barcodePaddingLeftMM = 22;
     const cardCornerRadiusMM = 2;
 
@@ -91,7 +94,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     // --- Add separator lines ---
     let separatorLinesSvg = '';
     const lineInsetPx = 3 * UI_SCALE_FACTOR; // Small inset for lines from card edges
-    const lineStrokeColor = "#cccccc"; // Light grey for subtlety
+    const lineStrokeColor = "#000000"; // Changed to black
     const lineStrokeWidth = "0.75px"; // Thin lines
 
     const currentCardType = data.cardType; // Access cardType from component props
@@ -105,48 +108,144 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     const spaceAdjustmentDx = 0.5 * UI_SCALE_FACTOR; // Adjust this value to control the space
 
     // Estimate cap height ratio for Anton SC (all caps font). This may need tuning.
-    const capHeightRatio = 0.82; 
+    const capHeightRatio = 0.82;
+
+    const escapeXml = (unsafe: string): string => {
+      return unsafe.replace(/[<>&'"]/g, (c) => {
+        switch (c) {
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '&': return '&amp;';
+          case '\'': return '&apos;';
+          case '"': return '&quot;';
+        }
+        return c;
+      });
+    };
 
     // Use alphabetic baseline for more consistent rendering across SVG viewers.
-    const commonTextAttributes = `font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="black" text-anchor="middle" dominant-baseline="alphabetic"`;
 
-    if (currentCardType === 'Soldier' || currentCardType === 'Wizard') {
-      // Warrior cards back: Top row 15mm, Card description 32mm
-      const yPos1WarriorPx = 15 * UI_SCALE_FACTOR;
-      const yPos2WarriorPx = (15 + 32) * UI_SCALE_FACTOR;
+    if (cardSide === 'back') {
+      let descriptionPlaceholderSvg = '';
+      const descriptionAreaHeightPx = 32 * UI_SCALE_FACTOR; // Standard for all back cards
+      let descriptionAreaYStartPx = 0;
+
+      // Unified dimensions for Item and Warrior card backs based on Item specs
+      // Item cards back: Top row 14mm, Card description 32mm, Bottom row 13mm
+      // Total height = 14 + 32 + 13 = 59mm
+      const topRowHeightPx = 14 * UI_SCALE_FACTOR;         // Unified to Item spec
+      // Description height is fixed at 32mm, so it's already descriptionAreaHeightPx
+
+      descriptionAreaYStartPx = topRowHeightPx;
+      const yPos2Px = topRowHeightPx + descriptionAreaHeightPx; // End of description, start of bottom row
+
       separatorLinesSvg = `
-  <line x1="${lineX1}" y1="${yPos1WarriorPx}" x2="${lineX2}" y2="${yPos1WarriorPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
-  <line x1="${lineX1}" y1="${yPos2WarriorPx}" x2="${lineX2}" y2="${yPos2WarriorPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
+  <line x1="${lineX1}" y1="${topRowHeightPx}" x2="${lineX2}" y2="${topRowHeightPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
+  <line x1="${lineX1}" y1="${yPos2Px}" x2="${lineX2}" y2="${yPos2Px}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
 
-      const topSectionCenterYPx = yPos1WarriorPx / 2;
-      // Adjust Y for alphabetic baseline to center the text block based on cap height of the smaller letters.
-      const titleActualBaselineYPx = topSectionCenterYPx + (titleFontSizePx * capHeightRatio / 2); 
-      
-      titleTextSvg = `<text x="${fullCardWidthPx / 2}" y="${titleActualBaselineYPx}" ${commonTextAttributes}>` +
-                      `<tspan font-size="${largeBFontSizePx}px">B</tspan>` +
-                      `<tspan font-size="${titleFontSizePx}px">arcode</tspan>` +
-                      `<tspan dx="${spaceAdjustmentDx}px" font-size="${largeBFontSizePx}px">B</tspan>` +
-                      `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
-                    `</text>`;
-
-    } else if (currentCardType === 'Weapon' || currentCardType === 'Armour' || currentCardType === 'PowerUp') {
-      // Item cards back: Top row 14mm, Card description 32mm
-      const yPos1ItemPx = 14 * UI_SCALE_FACTOR;
-      const yPos2ItemPx = (14 + 32) * UI_SCALE_FACTOR;
-      separatorLinesSvg = `
-  <line x1="${lineX1}" y1="${yPos1ItemPx}" x2="${lineX2}" y2="${yPos1ItemPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
-  <line x1="${lineX1}" y1="${yPos2ItemPx}" x2="${lineX2}" y2="${yPos2ItemPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
-      
-      const topSectionCenterYPx = yPos1ItemPx / 2;
-      // Adjust Y for alphabetic baseline to center the text block based on cap height of the smaller letters.
+      const topSectionCenterYPx = topRowHeightPx / 2;
       const titleActualBaselineYPx = topSectionCenterYPx + (titleFontSizePx * capHeightRatio / 2);
 
-      titleTextSvg = `<text x="${fullCardWidthPx / 2}" y="${titleActualBaselineYPx}" ${commonTextAttributes}>` +
+      titleTextSvg = `<text x="${fullCardWidthPx / 2}" y="${titleActualBaselineYPx}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="black" text-anchor="middle" dominant-baseline="alphabetic">` +
                       `<tspan font-size="${largeBFontSizePx}px">B</tspan>` +
                       `<tspan font-size="${titleFontSizePx}px">arcode</tspan>` +
                       `<tspan dx="${spaceAdjustmentDx}px" font-size="${largeBFontSizePx}px">B</tspan>` +
                       `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
                     `</text>`;
+      
+      // Add description placeholder for the back
+      descriptionPlaceholderSvg = `<rect x="${lineInsetPx}" y="${descriptionAreaYStartPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${descriptionAreaHeightPx}" fill="#f0f0f0" />` +
+                                  `<text x="${fullCardWidthPx / 2}" y="${descriptionAreaYStartPx + descriptionAreaHeightPx / 2}" font-family="Arial, sans-serif" font-size="${titleFontSizePx * 0.8}px" fill="#b0b0b0" text-anchor="middle" dominant-baseline="middle">DESCRIPTION</text>`;
+      
+      titleTextSvg = titleTextSvg + descriptionPlaceholderSvg;
+
+    } else { // cardSide === 'front'
+      titleTextSvg = ''; // No "Barcode Battler" title on the front
+
+      // Unified dimensions for Warrior and Item card fronts
+      const topTitleRowHeightPx = 12 * UI_SCALE_FACTOR; // Unified to Warrior spec
+      const imageHeightPx = 37 * UI_SCALE_FACTOR;       // Unified to Warrior spec (59 - 12 - 10 = 37)
+      const bottomRowHeightPx = 10 * UI_SCALE_FACTOR; // Unified to Warrior spec
+
+      // Define separator lines for the front
+      const frontLine1Y = topTitleRowHeightPx;
+      const frontLine2Y = topTitleRowHeightPx + imageHeightPx;
+      separatorLinesSvg = `
+  <line x1="${lineX1}" y1="${frontLine1Y}" x2="${lineX2}" y2="${frontLine1Y}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
+  <line x1="${lineX1}" y1="${frontLine2Y}" x2="${lineX2}" y2="${frontLine2Y}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
+
+      // Placeholder for image (full height)
+      const imagePlaceholderSvg = `<rect x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" fill="#e0e0e0" />` +
+                                 `<text x="${fullCardWidthPx / 2}" y="${topTitleRowHeightPx + imageHeightPx / 2}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="#a0a0a0" text-anchor="middle" dominant-baseline="middle" font-size="${titleFontSizePx*1.5}px">IMAGE</text>`;
+      
+      // Card Type and Insert instruction
+      const cardTypeFontSizePx = 4 * UI_SCALE_FACTOR;
+      const insertFontSizePx = 3 * UI_SCALE_FACTOR;
+      const cardTypeYPosPx = (topTitleRowHeightPx / 2) + (cardTypeFontSizePx * capHeightRatio / 3); // Adjusted for visual centering
+      const insertTextYPosPx = cardTypeYPosPx + insertFontSizePx * 1.2; // Position "Insert" below card type
+
+      const cardTypeName = currentCardType?.toUpperCase() || '';
+      let cardTypeTextSvg = `<text x="${fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2)}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${cardTypeFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic">${escapeXml(cardTypeName)}</text>`;
+      cardTypeTextSvg += `<text x="${fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2)}" y="${insertTextYPosPx}" font-family="Arial, sans-serif" font-size="${insertFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic"><tspan font-family="monospace" font-size="${insertFontSizePx*1.5}px" dy="-${insertFontSizePx*0.1}px">▶</tspan> Insert</text>`;
+      
+      // Card Title (Name) Placeholder - Top Left
+      const namePlaceholderText = "NAME";
+      const namePlaceholderFontSizePx = cardTypeFontSizePx * 1.1; // Similar size to card type
+      // Use the same Y as cardType for alignment, but anchor to start (left)
+      const namePlaceholderXPosPx = lineInsetPx + (UI_SCALE_FACTOR * 2);
+      const namePlaceholderSvg = `<text x="${namePlaceholderXPosPx}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${namePlaceholderFontSizePx}px" fill="#a0a0a0" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(namePlaceholderText)}</text>`;
+
+      // Bottom row text (HP for Warriors, Type-Acronym for Items)
+      const bottomTextYPosPx = topTitleRowHeightPx + imageHeightPx + (bottomRowHeightPx / 2) + (titleFontSizePx * capHeightRatio / 2);
+      let bottomRowTextLeftSvg = ''; 
+
+      if (currentCardType === 'Soldier' || currentCardType === 'Wizard') {
+        const hpValue = data.stats?.hp || 0;
+        const hpText = `HP ${hpValue}`;
+        bottomRowTextLeftSvg = `<text x="${lineInsetPx + (UI_SCALE_FACTOR * 2)}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(hpText)}</text>`;
+      } else if (currentCardType === 'Weapon' || currentCardType === 'Armour' || currentCardType === 'PowerUp') {
+        // Determine acronym and value based on item type
+        let acronym = '';
+        let value: number | undefined = undefined; // Initialize value that can be undefined (0 is a valid stat)
+
+        if (currentCardType === 'Weapon' && data.stats?.st !== undefined) {
+          acronym = 'ST'; value = data.stats.st;
+        } else if (currentCardType === 'Armour' && data.stats?.df !== undefined) {
+          acronym = 'DF'; value = data.stats.df;
+        } else if (currentCardType === 'PowerUp') {
+          // For PowerUp, determine the stat. A PowerUp card should ideally boost one primary stat.
+          // Check in a preferred order or based on which stat is available.
+          if (data.stats?.hp !== undefined) { acronym = 'HP'; value = data.stats.hp; }
+          else if (data.stats?.st !== undefined) { acronym = 'ST'; value = data.stats.st; }
+          else if (data.stats?.df !== undefined) { acronym = 'DF'; value = data.stats.df; }
+          // Future: else if (data.stats?.dx !== undefined) { acronym = 'DX'; value = data.stats.dx; }
+          // Future: else if (data.stats?.pp !== undefined) { acronym = 'PP'; value = data.stats.pp; }
+          // Future: else if (data.stats?.mp !== undefined) { acronym = 'MP'; value = data.stats.mp; }
+        }
+        
+        // Only construct and set bottomRowTextLeftSvg if a valid acronym and value were found
+        if (acronym && value !== undefined) { 
+            const itemText = `${acronym} ${value}`; // Display only acronym and value
+            bottomRowTextLeftSvg = `<text x="${lineInsetPx + (UI_SCALE_FACTOR * 2)}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(itemText)}</text>`;
+        } else {
+            // If no specific stat is found for the item type, clear the text.
+            bottomRowTextLeftSvg = ''; 
+        }
+      }
+
+      // Add ENEMY text for Soldiers/Wizards if not a hero
+      let enemyTextSvg = '';
+      if ((currentCardType === 'Soldier' || currentCardType === 'Wizard') && data.isHero === false) {
+        const enemyText = "ENEMY";
+        // Position ENEMY text on the right side of the bottom row
+        const enemyTextXPosPx = fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2); 
+        enemyTextSvg = `<text x="${enemyTextXPosPx}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic">${escapeXml(enemyText)}</text>`;
+      }
+
+      // Assemble front card elements
+      // Order matters for SVG rendering (later elements on top)
+      // Ensure enemyTextSvg is included here
+      titleTextSvg = namePlaceholderSvg + imagePlaceholderSvg + cardTypeTextSvg + bottomRowTextLeftSvg + enemyTextSvg;
     }
     // --- End of separator lines ---
 
@@ -155,7 +254,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       format: barcodeFormat,
       displayValue: false,
       margin: 0,
-      height: 40, // Px height for JsBarcode internal rendering (bars themselves)
+      height: 50,
       fontSize: 0, // Changed from 12
       textMargin: 0, // Changed from 2
       width: 2,
@@ -188,6 +287,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   <rect width="100%" height="100%" fill="white" stroke="black" stroke-width="1px" rx="${cardCornerRadiusPx}px" ry="${cardCornerRadiusPx}px" />
   ${titleTextSvg}
   ${separatorLinesSvg}
+  ${cardSide === 'back' ? `
   <g transform="translate(${barcodeXUnrotatedPx}, ${barcodeYUnrotatedPx}) rotate(180 ${barcodeOnCardWidthPx / 2} ${barcodeOnCardHeightPx / 2})">
     <svg
       width="${barcodeOnCardWidthPx}"
@@ -197,48 +297,84 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     >
       ${jsBarcodeInnerContent}
     </svg>
-  </g>`;
-  };
+  </g>` : ''}
+`;
+  }, [data, t, UI_SCALE_FACTOR, antonScFontDataUrl]); // Added UI_SCALE_FACTOR and antonScFontDataUrl to dependencies
 
   useEffect(() => {
-    const svgContainer = barcodeUiCardRef.current;
-    if (data.barcode && svgContainer && data.isValid) {
-      try {
-        const cardSvgContent = generateCardSvgContent(
-          data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13"
-        );
-        
-        if (cardSvgContent) {
-          const cardViewWidthPx = 86 * UI_SCALE_FACTOR;
-          const cardViewHeightPx = 59 * UI_SCALE_FACTOR;
+    const svgContainerBack = barcodeUiCardBackRef.current;
+    const svgContainerFront = barcodeUiCardFrontRef.current;
 
-          svgContainer.setAttribute('width', cardViewWidthPx.toString());
-          svgContainer.setAttribute('height', cardViewHeightPx.toString());
-          svgContainer.setAttribute('viewBox', `0 0 ${cardViewWidthPx} ${cardViewHeightPx}`);
-          svgContainer.innerHTML = cardSvgContent; // Set the generated inner content
-        } else {
-          svgContainer.innerHTML = '';
+    if (data.barcode && data.isValid) {
+      if (svgContainerBack) {
+        try {
+          const cardSvgContentBack = generateCardSvgContent( // Use the memoized version from the component scope
+            data.barcode,
+            data.barcode.length === 8 ? "EAN8" : "EAN13",
+            'back'
+          );
+          
+          if (cardSvgContentBack) {
+            const cardViewWidthPx = 86 * UI_SCALE_FACTOR;
+            const cardViewHeightPx = 59 * UI_SCALE_FACTOR;
+
+            svgContainerBack.setAttribute('width', cardViewWidthPx.toString());
+            svgContainerBack.setAttribute('height', cardViewHeightPx.toString());
+            svgContainerBack.setAttribute('viewBox', `0 0 ${cardViewWidthPx} ${cardViewHeightPx}`);
+            svgContainerBack.innerHTML = cardSvgContentBack; 
+          } else {
+            svgContainerBack.innerHTML = '';
+          }
+        } catch (e) {
+          console.error("UI Card/Barcode generation failed (Back):", e);
+          svgContainerBack.innerHTML = '';
         }
-
-      } catch (e) {
-        console.error("UI Card/Barcode generation failed:", e);
-        svgContainer.innerHTML = '';
       }
-    } else if (svgContainer) {
-      svgContainer.innerHTML = '';
-    }
-  }, [data.barcode, data.isValid, data.barcode?.length]); // Added data.barcode.length to dependencies
+      if (svgContainerFront) {
+        try {
+          const cardSvgContentFront = generateCardSvgContent( // Use the memoized version from the component scope
+            data.barcode,
+            data.barcode.length === 8 ? "EAN8" : "EAN13",
+            'front'
+          );
+          
+          if (cardSvgContentFront) {
+            const cardViewWidthPx = 86 * UI_SCALE_FACTOR;
+            const cardViewHeightPx = 59 * UI_SCALE_FACTOR;
 
-  const handleDownloadBarcode = () => {
+            svgContainerFront.setAttribute('width', cardViewWidthPx.toString());
+            svgContainerFront.setAttribute('height', cardViewHeightPx.toString());
+            svgContainerFront.setAttribute('viewBox', `0 0 ${cardViewWidthPx} ${cardViewHeightPx}`);
+            svgContainerFront.innerHTML = cardSvgContentFront; 
+          } else {
+            svgContainerFront.innerHTML = '';
+          }
+        } catch (e) {
+          console.error("UI Card/Barcode generation failed (Front):", e);
+          svgContainerFront.innerHTML = '';
+        }
+      }
+    } else {
+      if (svgContainerBack) svgContainerBack.innerHTML = '';
+      if (svgContainerFront) svgContainerFront.innerHTML = '';
+    }
+  }, [data, t, generateCardSvgContent]); // Added generateCardSvgContent to useEffect dependencies
+
+  const handleDownloadBarcode = async () => {
     if (data.barcode && data.isValid) {
       try {
-        const cardSvgContent = generateCardSvgContent(
+        const cardSvgContentFront = generateCardSvgContent(
           data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13"
+          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          'front'
+        );
+        const cardSvgContentBack = generateCardSvgContent(
+          data.barcode,
+          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          'back'
         );
 
-        if (!cardSvgContent) {
+        if (!cardSvgContentFront || !cardSvgContentBack) {
           console.error("Failed to generate SVG content for download.");
           return;
         }
@@ -262,7 +398,8 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     </style>
   </defs>`;
         
-        const finalCardSvgString = `
+        const createSvgBlobUrl = (content: string, side: 'FRONT' | 'BACK') => {
+          const finalCardSvgString = `
 <svg
   width="${cardWidthMM}mm"
   height="${cardHeightMM}mm"
@@ -270,50 +407,63 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   xmlns="http://www.w3.org/2000/svg"
 >
   ${fontDefs}
-  ${cardSvgContent}
+  ${content}
 </svg>`;
+          const blob = new Blob([finalCardSvgString], { type: 'image/svg+xml;charset=utf-8' });
+          return {
+            url: URL.createObjectURL(blob),
+            filename: `barcode-card-${side}-${data.barcode}.svg`
+          };
+        };
 
-        const blob = new Blob([finalCardSvgString], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `barcode-card-${data.barcode}.svg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        const downloadLink = (blobUrl: string, filename: string) => {
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        };
+
+        const frontSvg = createSvgBlobUrl(cardSvgContentFront, 'FRONT');
+        downloadLink(frontSvg.url, frontSvg.filename);
+
+        const backSvg = createSvgBlobUrl(cardSvgContentBack, 'BACK');
+        downloadLink(backSvg.url, backSvg.filename);
+
       } catch (e) {
-        console.error("Barcode card download failed:", e);
+        console.error("Barcode card SVG download failed:", e);
       }
     }
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (data.barcode && data.isValid) {
       try {
-        const cardSvgContent = generateCardSvgContent(
+        const cardSvgContentFront = generateCardSvgContent(
           data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13"
+          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          'front'
+        );
+        const cardSvgContentBack = generateCardSvgContent(
+          data.barcode,
+          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          'back'
         );
 
-        if (!cardSvgContent) {
+        if (!cardSvgContentFront || !cardSvgContentBack) {
           console.error("Failed to generate SVG content for PDF download.");
           return;
         }
 
         const cardWidthMM = 86;
         const cardHeightMM = 59;
-
-        // Dimensions for the SVG's viewBox, based on UI_SCALE_FACTOR
-        // This matches the coordinate system of generateCardSvgContent
         const svgViewBoxWidth = cardWidthMM * UI_SCALE_FACTOR;
         const svgViewBoxHeight = cardHeightMM * UI_SCALE_FACTOR;
-
-        // Target DPI for export
         const targetDpi = 300;
         const cardWidthInches = cardWidthMM / 25.4;
         const cardHeightInches = cardHeightMM / 25.4;
-
         const exportCanvasWidth = Math.round(cardWidthInches * targetDpi);
         const exportCanvasHeight = Math.round(cardHeightInches * targetDpi);
 
@@ -330,8 +480,10 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       ]]>
     </style>
   </defs>`;
-        
-        const finalSvgStringForRender = `
+
+        const createPngDataUrl = (svgContent: string): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const finalSvgStringForRender = `
 <svg
   width="${exportCanvasWidth}"
   height="${exportCanvasHeight}"
@@ -339,43 +491,45 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   xmlns="http://www.w3.org/2000/svg"
 >
   ${fontDefs}
-  ${cardSvgContent}
+  ${svgContent}
 </svg>`;
-
-        const canvas = document.createElement('canvas');
-        canvas.width = exportCanvasWidth;
-        canvas.height = exportCanvasHeight;
-        const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-          console.error("Could not get canvas context for PDF generation.");
-          return;
-        }
-
-        const img = new Image();
-        const svgBlob = new Blob([finalSvgStringForRender], {type: 'image/svg+xml;charset=utf-8'});
-        const url = URL.createObjectURL(svgBlob);
-
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0, exportCanvasWidth, exportCanvasHeight);
-          URL.revokeObjectURL(url);
-          const imgData = canvas.toDataURL('image/png'); 
-          
-          const pdf = new jsPDF({
-            orientation: 'landscape',
-            unit: 'mm',
-            format: [cardWidthMM, cardHeightMM]
+            const canvas = document.createElement('canvas');
+            canvas.width = exportCanvasWidth;
+            canvas.height = exportCanvasHeight;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject("Could not get canvas context for PDF generation.");
+              return;
+            }
+            const img = new Image();
+            const svgBlob = new Blob([finalSvgStringForRender], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(svgBlob);
+            img.onload = () => {
+              ctx.drawImage(img, 0, 0, exportCanvasWidth, exportCanvasHeight);
+              URL.revokeObjectURL(url);
+              resolve(canvas.toDataURL('image/png'));
+            };
+            img.onerror = (e) => {
+              URL.revokeObjectURL(url);
+              reject("Error loading SVG image for PDF conversion: " + e);
+            };
+            img.src = url;
           });
-
-          pdf.addImage(imgData, 'PNG', 0, 0, cardWidthMM, cardHeightMM);
-          pdf.save(`barcode-card-${data.barcode}.pdf`);
         };
 
-        img.onerror = (e) => {
-          console.error("Error loading SVG image for PDF conversion:", e);
-          URL.revokeObjectURL(url);
-        };
-        img.src = url;
+        const frontImgData = await createPngDataUrl(cardSvgContentFront);
+        const backImgData = await createPngDataUrl(cardSvgContentBack);
+        
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: [cardWidthMM, cardHeightMM]
+        });
+
+        pdf.addImage(frontImgData, 'PNG', 0, 0, cardWidthMM, cardHeightMM);
+        pdf.addPage();
+        pdf.addImage(backImgData, 'PNG', 0, 0, cardWidthMM, cardHeightMM);
+        pdf.save(`barcode-card-FRONT-BACK-${data.barcode}.pdf`);
 
       } catch (e) {
         console.error("Barcode card PDF download failed:", e);
@@ -383,29 +537,32 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     }
   };
 
-  const handleDownloadPng = () => {
+  const handleDownloadPng = async () => {
     if (data.barcode && data.isValid) {
       try {
-        const cardSvgContent = generateCardSvgContent(
+        const cardSvgContentFront = generateCardSvgContent(
           data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13"
+          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          'front'
+        );
+        const cardSvgContentBack = generateCardSvgContent(
+          data.barcode,
+          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          'back'
         );
 
-        if (!cardSvgContent) {
+        if (!cardSvgContentFront || !cardSvgContentBack) {
           console.error("Failed to generate SVG content for PNG download.");
           return;
         }
 
         const cardWidthMM = 86;
         const cardHeightMM = 59; 
-
         const svgViewBoxWidth = cardWidthMM * UI_SCALE_FACTOR;
         const svgViewBoxHeight = cardHeightMM * UI_SCALE_FACTOR;
-
         const targetDpi = 300;
         const cardWidthInches = cardWidthMM / 25.4;
         const cardHeightInches = cardHeightMM / 25.4;
-
         const exportCanvasWidth = Math.round(cardWidthInches * targetDpi);
         const exportCanvasHeight = Math.round(cardHeightInches * targetDpi);
 
@@ -423,7 +580,8 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     </style>
   </defs>`;
 
-        const finalSvgStringForRender = `
+        const createPngAndDownload = (svgContent: string, side: 'FRONT' | 'BACK') => {
+          const finalSvgStringForRender = `
 <svg
   width="${exportCanvasWidth}"
   height="${exportCanvasHeight}"
@@ -431,42 +589,39 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   xmlns="http://www.w3.org/2000/svg"
 >
   ${fontDefs}
-  ${cardSvgContent}
+  ${svgContent}
 </svg>`;
-
-        const canvas = document.createElement('canvas');
-        canvas.width = exportCanvasWidth;
-        canvas.height = exportCanvasHeight;
-        const ctx = canvas.getContext('2d');
-
-        if (!ctx) {
-          console.error("Could not get canvas context for PNG generation.");
-          return;
-        }
-
-        const img = new Image();
-        const svgBlob = new Blob([finalSvgStringForRender], {type: 'image/svg+xml;charset=utf-8'});
-        const url = URL.createObjectURL(svgBlob);
-
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0, exportCanvasWidth, exportCanvasHeight);
-          URL.revokeObjectURL(url);
-          const pngUrl = canvas.toDataURL('image/png');
-          
-          const link = document.createElement('a');
-          link.href = pngUrl;
-          link.download = `barcode-card-${data.barcode}.png`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+          const canvas = document.createElement('canvas');
+          canvas.width = exportCanvasWidth;
+          canvas.height = exportCanvasHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            console.error("Could not get canvas context for PNG generation.");
+            return;
+          }
+          const img = new Image();
+          const svgBlob = new Blob([finalSvgStringForRender], {type: 'image/svg+xml;charset=utf-8'});
+          const url = URL.createObjectURL(svgBlob);
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, exportCanvasWidth, exportCanvasHeight);
+            URL.revokeObjectURL(url);
+            const pngUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = pngUrl;
+            link.download = `barcode-card-${side}-${data.barcode}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          };
+          img.onerror = (e) => {
+            console.error(`Error loading SVG image for PNG conversion (${side}):`, e);
+            URL.revokeObjectURL(url);
+          };
+          img.src = url;
         };
 
-        img.onerror = (e) => {
-          console.error("Error loading SVG image for PNG conversion:", e);
-          URL.revokeObjectURL(url);
-        };
-
-        img.src = url;
+        createPngAndDownload(cardSvgContentFront, 'FRONT');
+        createPngAndDownload(cardSvgContentBack, 'BACK');
 
       } catch (e) {
         console.error("Barcode card PNG download failed:", e);
@@ -553,6 +708,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     barcode: 'explanationBarcode',
     isValid: 'explanationIsValid',
     methodUsed: 'explanationMethodUsed',
+    race: 'explanationRace', // Add a generic explanation key for race
     // barcodeType explanation is dynamic via digitMappings
   };
 
@@ -604,7 +760,27 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
               // Ensure the result is treated as a string
               const flagEffectText = String(t(flagEffectKey, { defaultValue: '' }));
               if (flagEffectText) {
-                displayExplanation += ` (${flagEffectText})`;
+                // Append if there's already an explanation, otherwise set it.
+                if (displayExplanation !== t('noExplanationAvailable') && displayExplanation !== t(staticExplanationKeys.race)) {
+                    displayExplanation += ` (${flagEffectText})`;
+                } else {
+                    displayExplanation = flagEffectText;
+                }
+              }
+            }
+
+            // Special case for Race: Add race name to the explanation
+            if (key === 'race' && typeof value === 'number') {
+              const raceNameKey = `raceNames.${value}`;
+              const raceNameText = String(t(raceNameKey, { defaultValue: '' }));
+              if (raceNameText) {
+                // If the current explanation is the generic one for race or no explanation, replace it.
+                // Otherwise, append the race name.
+                if (displayExplanation === t(staticExplanationKeys.race) || displayExplanation === t('noExplanationAvailable')) {
+                  displayExplanation = raceNameText;
+                } else {
+                  displayExplanation += ` (${raceNameText})`;
+                }
               }
             }
 
@@ -657,20 +833,30 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     <div>
       {data.barcode && data.isValid && (
         <div style={{ marginBottom: '20px', textAlign: 'center' }}>
-          <svg ref={barcodeUiCardRef}></svg>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '10px' }}>
+            <div>
+              <h4>{t('cardFrontTitle')}</h4>
+              <svg ref={barcodeUiCardFrontRef}></svg>
+            </div>
+            <div>
+              <h4>{t('cardBackTitle')}</h4>
+              <svg ref={barcodeUiCardBackRef}></svg>
+            </div>
+          </div>
           <div>
             <button onClick={handleDownloadBarcode} style={{ marginTop: '10px' }}>
-              {t('downloadCardButtonSvg')}
+              {t('downloadCardButtonSvgAll')}
             </button>
             <button onClick={handleDownloadPdf} style={{ marginTop: '10px', marginLeft: '10px' }}>
-              {t('downloadCardButtonPdf')}
+              {t('downloadCardButtonPdfAll')}
             </button>
             <button onClick={handleDownloadPng} style={{ marginTop: '10px', marginLeft: '10px' }}>
-              {t('downloadCardButtonPng')}
+              {t('downloadCardButtonPngAll')}
             </button>
           </div>
         </div>
       )}
+      {/* Ensure tables are rendered only if there is data for them */}
       {cardPropertyData.length > 0 && renderTable('cardPropertiesTitle', cardPropertyData)}
       {parsingDetailData.length > 0 && renderTable('parsingDetailsTitle', parsingDetailData)}
     </div>
