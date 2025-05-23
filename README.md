@@ -2,7 +2,7 @@
 
 This project contains a TypeScript implementation for parsing barcodes according to the card system rules of Barcode Battler II (European version).
 
-## Acknowledgements
+## Acknowledgements
 This project is based on the information in the [Barcode Battler Museum](https://barcodebattler.co.uk/) and the [Barcode Battler Engine project](https://github.com/VITIMan/barcode-battler-engine). Many thanks and all the credit to the contributors of these projects for their work in reverse engineering the card system and providing valuable insights into the game mechanics.
 
 The project has been created using LLMs and is not affiliated with the original Barcode Battler II game or its developers.
