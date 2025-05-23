@@ -4,7 +4,7 @@
   "barcodeInputPlaceholder": "e.g., 0340912373503",
   "parseButton": "Parse Barcode",
   "uploadImageLabel": "Upload Custom Image:",
-  "imageUploadHelpTooltip": "For best results, use SVG images. If using PNG/JPG, ensure high resolution (300dpi recommended) and an aspect ratio of 80:37 (e.g., 800x370px) to fit the card image area.",
+  "imageUploadHelpTooltip": "For best results, use an image with an 80:37 aspect ratio (e.g., 800x370px). Images with different proportions will be scaled to cover the 80x37 area, centered, and any excess will be cropped. SVG format is recommended for sharpness. Your image is processed locally in your browser and is not uploaded to any server.",
   "downloadCardButtonSvg": "Download Card (SVG)",
   "downloadCardButtonPdf": "Download Card (PDF)",
   "downloadCardButtonPng": "Download Card (PNG)",
@@ -210,5 +210,6 @@
     "97": "Rewards Player with Passcode 47 (C2 Mode)",
     "98": "Rewards Player with Passcode 48 (C2 Mode)",
     "99": "Rewards Player with Passcode 49 (C2 Mode)"
-  }
+  },
+  "userManualLink": "User Manual"
 }

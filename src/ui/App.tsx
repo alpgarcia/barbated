@@ -102,8 +102,16 @@ function App() {
     }
   };
 
+  const userManualUrl = `${import.meta.env.BASE_URL}USER_MANUAL.md`;
+
   return (
     <>
+      <div className="user-manual-link-container">
+        <a href={userManualUrl} target="_blank" rel="noopener noreferrer">
+          {t('userManualLink')}
+        </a>
+      </div>
+
       <h1>{t('appTitle')}</h1>
       <div className="input-container">
         <label htmlFor="barcode-input">{t('barcodeInputLabel')}</label>
