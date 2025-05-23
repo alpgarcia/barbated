@@ -237,3 +237,50 @@
 .explanation-toggle input[type="checkbox"] {
   margin-right: 5px;
 }
+
+.results-box {
+  border: 1px solid #ccc;
+  padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+}
+
+.customization-section h3 {
+  margin-top: 0;
+}
+
+.image-upload-container label {
+  display: flex;
+  align-items: center; 
+}
+
+.tooltip-trigger {
+  margin-left: 8px;
+  cursor: help;
+  border: 1px solid #ccc;
+  border-radius: 50%;
+  width: 18px; /* Adjust size as needed */
+  height: 18px; /* Adjust size as needed */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px; /* Adjust size as needed */
+  font-weight: bold;
+  color: #555;
+  background-color: #f0f0f0;
+}
+
+.tooltip-trigger:hover {
+  background-color: #e0e0e0;
+  border-color: #bbb;
+}
+
+/* Ensure input-container in customization section has some spacing */
+.customization-section .input-container {
+  margin-bottom: 10px;
+}
+
+.customization-section .input-container:last-child {
+  margin-bottom: 0;
+}

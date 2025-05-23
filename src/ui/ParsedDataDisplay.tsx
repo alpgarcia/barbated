@@ -897,7 +897,10 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         </div>
         {onImageUpload && (
           <div className="input-container image-upload-container">
-            <label htmlFor="image-upload-input-details">{t('uploadImageLabel')}</label>
+            <label htmlFor="image-upload-input-details">
+              {t('uploadImageLabel')}
+              <span className="tooltip-trigger" title={t('imageUploadHelpTooltip')}>ⓘ</span>
+            </label>
             <input
               id="image-upload-input-details"
               type="file"

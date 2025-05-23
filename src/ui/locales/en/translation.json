@@ -4,6 +4,7 @@
   "barcodeInputPlaceholder": "e.g., 0340912373503",
   "parseButton": "Parse Barcode",
   "uploadImageLabel": "Upload Custom Image:",
+  "imageUploadHelpTooltip": "For best results, use SVG images. If using PNG/JPG, ensure high resolution (300dpi recommended) and an aspect ratio of 80:37 (e.g., 800x370px) to fit the card image area.",
   "downloadCardButtonSvg": "Download Card (SVG)",
   "downloadCardButtonPdf": "Download Card (PDF)",
   "downloadCardButtonPng": "Download Card (PNG)",
