@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && mkdir -p public && cp src/assets/manuals/USER_MANUAL.md public/USER_MANUAL.md && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "jest"

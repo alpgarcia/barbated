@@ -136,3 +136,6 @@ Thumbs.db
 
 # Local working directories
 references/
+
+# Generated files (like the user manual in public)
+public/USER_MANUAL.md
