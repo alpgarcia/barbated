@@ -70,6 +70,8 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [showExplanations, setShowExplanations] = useState(false)
   const [highlightedDigits, setHighlightedDigits] = useState<number[] | null>(null) // State for highlighted digits
+  const [customImage, setCustomImage] = useState<string | null>(null); // State for custom image
+  const [cardName, setCardName] = useState<string>(''); // State for card name
 
   const handleParse = () => {
     try {
@@ -77,6 +79,8 @@ function App() {
       setParsedData(result)
       setError(null)
       setHighlightedDigits(null) // Reset highlight on new parse
+      setCardName(''); // Reset card name on new parse
+      setCustomImage(null); // Reset custom image on new parse
     } catch (err) {
       setParsedData(null)
       // Use translation key for unknown error, parser errors will be keys now
@@ -84,6 +88,19 @@ function App() {
       setHighlightedDigits(null)
     }
   }
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCustomImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setCustomImage(null);
+    }
+  };
 
   return (
     <>
@@ -135,6 +152,10 @@ function App() {
               data={parsedData}
               showExplanations={showExplanations}
               setHighlightedDigits={setHighlightedDigits}
+              customImage={customImage} // Pass custom image to ParsedDataDisplay
+              onImageUpload={handleImageUpload} // Pass the handler
+              cardName={cardName} // Pass cardName
+              onCardNameChange={setCardName} // Pass cardName setter
             />
           </div>
         </div>

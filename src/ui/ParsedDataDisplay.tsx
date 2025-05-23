@@ -11,6 +11,10 @@ interface ParsedDataDisplayProps {
   data: ParsedBarcodeData;
   showExplanations: boolean;
   setHighlightedDigits: (indices: number[] | null) => void;
+  customImage?: string | null; // Add customImage prop
+  onImageUpload?: (event: React.ChangeEvent<HTMLInputElement>) => void; // Add onImageUpload prop
+  cardName?: string; // Add cardName prop
+  onCardNameChange?: (name: string) => void; // Add onCardNameChange prop
 }
 
 // Helper to flatten the data object for display
@@ -56,7 +60,7 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
   return orderedFlat;
 };
 
-const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits }) => {
+const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits, customImage, onImageUpload, cardName, onCardNameChange }) => {
   const { t } = useTranslation();
   const barcodeUiCardBackRef = useRef<SVGSVGElement>(null); // Renamed for clarity
   const barcodeUiCardFrontRef = useRef<SVGSVGElement>(null); // New ref for the front
@@ -69,7 +73,9 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   const generateCardSvgContent = React.useCallback((
     barcodeValue: string,
     barcodeFormat: "EAN8" | "EAN13",
-    cardSide: 'front' | 'back'
+    cardSide: 'front' | 'back',
+    customImageSrc: string | null | undefined, // Add customImageSrc parameter
+    currentCardName: string | undefined // Add currentCardName parameter
   ): string => {
     // Base MM dimensions (used for calculating scaled pixel values)
     const cardWidthMM = 86; // Standard card width
@@ -174,10 +180,14 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   <line x1="${lineX1}" y1="${frontLine1Y}" x2="${lineX2}" y2="${frontLine1Y}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
   <line x1="${lineX1}" y1="${frontLine2Y}" x2="${lineX2}" y2="${frontLine2Y}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
 
-      // Placeholder for image (full height)
-      const imagePlaceholderSvg = `<rect x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" fill="#e0e0e0" />` +
-                                 `<text x="${fullCardWidthPx / 2}" y="${topTitleRowHeightPx + imageHeightPx / 2}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="#a0a0a0" text-anchor="middle" dominant-baseline="middle" font-size="${titleFontSizePx*1.5}px">IMAGE</text>`;
-      
+      let imageElementSvg = '';
+      if (customImageSrc) {
+        imageElementSvg = `<image href="${customImageSrc}" x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" preserveAspectRatio="xMidYMid slice" />`;
+      } else {
+        imageElementSvg = `<rect x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" fill="#e0e0e0" />` +
+                          `<text x="${fullCardWidthPx / 2}" y="${topTitleRowHeightPx + imageHeightPx / 2}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="#a0a0a0" text-anchor="middle" dominant-baseline="middle" font-size="${titleFontSizePx*1.5}px">IMAGE</text>`;
+      }
+
       // Card Type and Insert instruction
       const cardTypeFontSizePx = 4 * UI_SCALE_FACTOR;
       const insertFontSizePx = 3 * UI_SCALE_FACTOR;
@@ -189,11 +199,11 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       cardTypeTextSvg += `<text x="${fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2)}" y="${insertTextYPosPx}" font-family="Arial, sans-serif" font-size="${insertFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic"><tspan font-family="monospace" font-size="${insertFontSizePx*1.5}px" dy="-${insertFontSizePx*0.1}px">▶</tspan> Insert</text>`;
       
       // Card Title (Name) Placeholder - Top Left
-      const namePlaceholderText = "NAME";
-      const namePlaceholderFontSizePx = cardTypeFontSizePx * 1.1; // Similar size to card type
-      // Use the same Y as cardType for alignment, but anchor to start (left)
-      const namePlaceholderXPosPx = lineInsetPx + (UI_SCALE_FACTOR * 2);
-      const namePlaceholderSvg = `<text x="${namePlaceholderXPosPx}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${namePlaceholderFontSizePx}px" fill="#a0a0a0" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(namePlaceholderText)}</text>`;
+      const nameFontSizePx = cardTypeFontSizePx * 1.1; // Similar size to card type
+      const nameXPosPx = lineInsetPx + (UI_SCALE_FACTOR * 2);
+      const nameToDisplay = currentCardName && currentCardName.trim() !== '' ? currentCardName : "NAME";
+      const nameColor = currentCardName && currentCardName.trim() !== '' ? "black" : "#a0a0a0";
+      const nameSvg = `<text x="${nameXPosPx}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${nameFontSizePx}px" fill="${nameColor}" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(nameToDisplay)}</text>`;
 
       // Bottom row text (HP for Warriors, Type-Acronym for Items)
       const bottomTextYPosPx = topTitleRowHeightPx + imageHeightPx + (bottomRowHeightPx / 2) + (titleFontSizePx * capHeightRatio / 2);
@@ -245,7 +255,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       // Assemble front card elements
       // Order matters for SVG rendering (later elements on top)
       // Ensure enemyTextSvg is included here
-      titleTextSvg = namePlaceholderSvg + imagePlaceholderSvg + cardTypeTextSvg + bottomRowTextLeftSvg + enemyTextSvg;
+      titleTextSvg = nameSvg + imageElementSvg + cardTypeTextSvg + bottomRowTextLeftSvg + enemyTextSvg;
     }
     // --- End of separator lines ---
 
@@ -311,7 +321,9 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
           const cardSvgContentBack = generateCardSvgContent( // Use the memoized version from the component scope
             data.barcode,
             data.barcode.length === 8 ? "EAN8" : "EAN13",
-            'back'
+            'back',
+            null, // No custom image for back
+            undefined // No card name for back
           );
           
           if (cardSvgContentBack) {
@@ -335,7 +347,9 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
           const cardSvgContentFront = generateCardSvgContent( // Use the memoized version from the component scope
             data.barcode,
             data.barcode.length === 8 ? "EAN8" : "EAN13",
-            'front'
+            'front',
+            customImage, // Pass customImage to front card
+            cardName // Pass cardName to front card
           );
           
           if (cardSvgContentFront) {
@@ -358,7 +372,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       if (svgContainerBack) svgContainerBack.innerHTML = '';
       if (svgContainerFront) svgContainerFront.innerHTML = '';
     }
-  }, [data, t, generateCardSvgContent]); // Added generateCardSvgContent to useEffect dependencies
+  }, [data, t, generateCardSvgContent, customImage, cardName]); // Added cardName to useEffect dependencies
 
   const handleDownloadBarcode = async () => {
     if (data.barcode && data.isValid) {
@@ -366,12 +380,16 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         const cardSvgContentFront = generateCardSvgContent(
           data.barcode,
           data.barcode.length === 8 ? "EAN8" : "EAN13",
-          'front'
+          'front',
+          customImage, // Pass customImage
+          cardName // Pass cardName
         );
         const cardSvgContentBack = generateCardSvgContent(
           data.barcode,
           data.barcode.length === 8 ? "EAN8" : "EAN13",
-          'back'
+          'back',
+          null, // No custom image for back
+          undefined // No card name for back
         );
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
@@ -444,12 +462,16 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         const cardSvgContentFront = generateCardSvgContent(
           data.barcode,
           data.barcode.length === 8 ? "EAN8" : "EAN13",
-          'front'
+          'front',
+          customImage, // Pass customImage
+          cardName // Pass cardName
         );
         const cardSvgContentBack = generateCardSvgContent(
           data.barcode,
           data.barcode.length === 8 ? "EAN8" : "EAN13",
-          'back'
+          'back',
+          null, // No custom image for back
+          undefined // No card name for back
         );
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
@@ -543,12 +565,16 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         const cardSvgContentFront = generateCardSvgContent(
           data.barcode,
           data.barcode.length === 8 ? "EAN8" : "EAN13",
-          'front'
+          'front',
+          customImage, // Pass customImage
+          cardName // Pass cardName
         );
         const cardSvgContentBack = generateCardSvgContent(
           data.barcode,
           data.barcode.length === 8 ? "EAN8" : "EAN13",
-          'back'
+          'back',
+          null, // No custom image for back
+          undefined // No card name for back
         );
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
@@ -830,7 +856,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   );
 
   return (
-    <div>
+    <div className="parsed-data-display">
       {data.barcode && data.isValid && (
         <div style={{ marginBottom: '20px', textAlign: 'center' }}>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '10px' }}>
@@ -856,6 +882,31 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
           </div>
         </div>
       )}
+      {/* Card Customization Section */}
+      <div className="customization-section results-box">
+        <h3>{t('cardCustomizationTitle')}</h3>
+        <div className="input-container">
+          <label htmlFor="card-name-input">{t('cardNameInputLabel')}</label>
+          <input
+            id="card-name-input"
+            type="text"
+            value={cardName || ''}
+            onChange={(e) => onCardNameChange?.(e.target.value)}
+            placeholder={t('fieldLabelCardType')} // Or a more generic placeholder
+          />
+        </div>
+        {onImageUpload && (
+          <div className="input-container image-upload-container">
+            <label htmlFor="image-upload-input-details">{t('uploadImageLabel')}</label>
+            <input
+              id="image-upload-input-details"
+              type="file"
+              accept="image/*"
+              onChange={onImageUpload}
+            />
+          </div>
+        )}
+      </div>
       {/* Ensure tables are rendered only if there is data for them */}
       {cardPropertyData.length > 0 && renderTable('cardPropertiesTitle', cardPropertyData)}
       {parsingDetailData.length > 0 && renderTable('parsingDetailsTitle', parsingDetailData)}
