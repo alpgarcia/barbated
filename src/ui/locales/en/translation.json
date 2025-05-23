@@ -23,6 +23,7 @@
   "parsingDetailsTitle": "Barcode Parsing Details",
   "cardCustomizationTitle": "Card Customization",
   "cardNameInputLabel": "Card Name:",
+  "cardNameInputPlaceholder": "NAME",
   "cardFrontTitle": "Card Front",
   "cardBackTitle": "Card Back",
   "tableHeaderField": "Field",

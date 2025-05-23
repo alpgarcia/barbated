@@ -60,240 +60,231 @@ const flattenData = (data: ParsedBarcodeData): Record<string, string | number | 
   return orderedFlat;
 };
 
-const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits, customImage, onImageUpload, cardName, onCardNameChange }) => {
-  const { t } = useTranslation();
-  const barcodeUiCardBackRef = useRef<SVGSVGElement>(null); // Renamed for clarity
-  const barcodeUiCardFrontRef = useRef<SVGSVGElement>(null); // New ref for the front
+const generateCardSvgContent = (
+  data: ParsedBarcodeData,
+  cardSide: 'front' | 'back',
+  customImageSrc: string | null | undefined, // Add customImageSrc parameter
+  currentCardName: string | undefined, // Add currentCardName parameter
+  t: (key: string) => string // Add t function as a parameter
+): string => {
+  const nameText = currentCardName || t('cardNameInputPlaceholder'); // Use t function for default name
 
-  const flatData = flattenData(data);
+  // Base MM dimensions (used for calculating scaled pixel values)
+  const cardWidthMM = 86; // Standard card width
+  const cardHeightMM = 59; // Needed for barcode Y position calculation
+  const barcodeOnCardWidthMM = 40;
+  const barcodeOnCardHeightMM = 12;
+  const barcodePaddingLeftMM = 22;
+  const cardCornerRadiusMM = 2;
 
-  // Memoize generateCardSvgContent to stabilize its identity if its dependencies are stable
-  // This assumes UI_SCALE_FACTOR, capHeightRatio etc. are stable (module constants or similar)
-  // and `t` from useTranslation is stable.
-  const generateCardSvgContent = React.useCallback((
-    barcodeValue: string,
-    barcodeFormat: "EAN8" | "EAN13",
-    cardSide: 'front' | 'back',
-    customImageSrc: string | null | undefined, // Add customImageSrc parameter
-    currentCardName: string | undefined // Add currentCardName parameter
-  ): string => {
-    // Base MM dimensions (used for calculating scaled pixel values)
-    const cardWidthMM = 86; // Standard card width
-    const cardHeightMM = 59; // Needed for barcode Y position calculation
-    const barcodeOnCardWidthMM = 40;
-    const barcodeOnCardHeightMM = 12;
-    const barcodePaddingLeftMM = 22;
-    const cardCornerRadiusMM = 2;
+  // Dimensions in scaled pixels for internal rendering
+  const fullCardWidthPx = cardWidthMM * UI_SCALE_FACTOR;
+  const fullCardHeightPx = cardHeightMM * UI_SCALE_FACTOR; 
+  const barcodeOnCardWidthPx = barcodeOnCardWidthMM * UI_SCALE_FACTOR;
+  const barcodeOnCardHeightPx = barcodeOnCardHeightMM * UI_SCALE_FACTOR;
+  const barcodePaddingLeftPx = barcodePaddingLeftMM * UI_SCALE_FACTOR;
+  const cardCornerRadiusPx = cardCornerRadiusMM * UI_SCALE_FACTOR;
 
-    // Dimensions in scaled pixels for internal rendering
-    const fullCardWidthPx = cardWidthMM * UI_SCALE_FACTOR;
-    const fullCardHeightPx = cardHeightMM * UI_SCALE_FACTOR; 
-    const barcodeOnCardWidthPx = barcodeOnCardWidthMM * UI_SCALE_FACTOR;
-    const barcodeOnCardHeightPx = barcodeOnCardHeightMM * UI_SCALE_FACTOR;
-    const barcodePaddingLeftPx = barcodePaddingLeftMM * UI_SCALE_FACTOR;
-    const cardCornerRadiusPx = cardCornerRadiusMM * UI_SCALE_FACTOR;
+  // Calculate barcode position based on the full card height in scaled pixels
+  const barcodeXUnrotatedPx = barcodePaddingLeftPx;
+  const barcodeYUnrotatedPx = fullCardHeightPx - barcodeOnCardHeightPx;
 
-    // Calculate barcode position based on the full card height in scaled pixels
-    const barcodeXUnrotatedPx = barcodePaddingLeftPx;
-    const barcodeYUnrotatedPx = fullCardHeightPx - barcodeOnCardHeightPx;
+  // --- Add separator lines ---
+  let separatorLinesSvg = '';
+  const lineInsetPx = 3 * UI_SCALE_FACTOR; // Small inset for lines from card edges
+  const lineStrokeColor = "#000000"; // Changed to black
+  const lineStrokeWidth = "0.75px"; // Thin lines
 
-    // --- Add separator lines ---
-    let separatorLinesSvg = '';
-    const lineInsetPx = 3 * UI_SCALE_FACTOR; // Small inset for lines from card edges
-    const lineStrokeColor = "#000000"; // Changed to black
-    const lineStrokeWidth = "0.75px"; // Thin lines
+  const currentCardType = data.cardType; // Access cardType from component props
 
-    const currentCardType = data.cardType; // Access cardType from component props
+  const lineX1 = lineInsetPx;
+  const lineX2 = fullCardWidthPx - lineInsetPx;
 
-    const lineX1 = lineInsetPx;
-    const lineX2 = fullCardWidthPx - lineInsetPx;
+  let titleTextSvg = '';
+  const titleFontSizePx = 5 * UI_SCALE_FACTOR; // Font size for the title
+  const largeBFontSizePx = titleFontSizePx * 1.5; // Font size for the 'B's
+  const spaceAdjustmentDx = 0.5 * UI_SCALE_FACTOR; // Adjust this value to control the space
 
-    let titleTextSvg = '';
-    const titleFontSizePx = 5 * UI_SCALE_FACTOR; // Font size for the title
-    const largeBFontSizePx = titleFontSizePx * 1.5; // Font size for the 'B's
-    const spaceAdjustmentDx = 0.5 * UI_SCALE_FACTOR; // Adjust this value to control the space
+  // Estimate cap height ratio for Anton SC (all caps font). This may need tuning.
+  const capHeightRatio = 0.82;
 
-    // Estimate cap height ratio for Anton SC (all caps font). This may need tuning.
-    const capHeightRatio = 0.82;
+  const escapeXml = (unsafe: string): string => {
+    return unsafe.replace(/[<>&'"]/g, (c) => {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case '\'': return '&apos;';
+        case '"': return '&quot;';
+      }
+      return c;
+    });
+  };
 
-    const escapeXml = (unsafe: string): string => {
-      return unsafe.replace(/[<>&'"]/g, (c) => {
-        switch (c) {
-          case '<': return '&lt;';
-          case '>': return '&gt;';
-          case '&': return '&amp;';
-          case '\'': return '&apos;';
-          case '"': return '&quot;';
-        }
-        return c;
-      });
-    };
+  // Use alphabetic baseline for more consistent rendering across SVG viewers.
 
-    // Use alphabetic baseline for more consistent rendering across SVG viewers.
+  if (cardSide === 'back') {
+    let descriptionPlaceholderSvg = '';
+    const descriptionAreaHeightPx = 32 * UI_SCALE_FACTOR; // Standard for all back cards
+    let descriptionAreaYStartPx = 0;
 
-    if (cardSide === 'back') {
-      let descriptionPlaceholderSvg = '';
-      const descriptionAreaHeightPx = 32 * UI_SCALE_FACTOR; // Standard for all back cards
-      let descriptionAreaYStartPx = 0;
+    // Unified dimensions for Item and Warrior card backs based on Item specs
+    // Item cards back: Top row 14mm, Card description 32mm, Bottom row 13mm
+    // Total height = 14 + 32 + 13 = 59mm
+    const topRowHeightPx = 14 * UI_SCALE_FACTOR;         // Unified to Item spec
+    // Description height is fixed at 32mm, so it's already descriptionAreaHeightPx
 
-      // Unified dimensions for Item and Warrior card backs based on Item specs
-      // Item cards back: Top row 14mm, Card description 32mm, Bottom row 13mm
-      // Total height = 14 + 32 + 13 = 59mm
-      const topRowHeightPx = 14 * UI_SCALE_FACTOR;         // Unified to Item spec
-      // Description height is fixed at 32mm, so it's already descriptionAreaHeightPx
+    descriptionAreaYStartPx = topRowHeightPx;
+    const yPos2Px = topRowHeightPx + descriptionAreaHeightPx; // End of description, start of bottom row
 
-      descriptionAreaYStartPx = topRowHeightPx;
-      const yPos2Px = topRowHeightPx + descriptionAreaHeightPx; // End of description, start of bottom row
-
-      separatorLinesSvg = `
+    separatorLinesSvg = `
   <line x1="${lineX1}" y1="${topRowHeightPx}" x2="${lineX2}" y2="${topRowHeightPx}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
   <line x1="${lineX1}" y1="${yPos2Px}" x2="${lineX2}" y2="${yPos2Px}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
 
-      const topSectionCenterYPx = topRowHeightPx / 2;
-      const titleActualBaselineYPx = topSectionCenterYPx + (titleFontSizePx * capHeightRatio / 2);
+    const topSectionCenterYPx = topRowHeightPx / 2;
+    const titleActualBaselineYPx = topSectionCenterYPx + (titleFontSizePx * capHeightRatio / 2);
 
-      titleTextSvg = `<text x="${fullCardWidthPx / 2}" y="${titleActualBaselineYPx}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="black" text-anchor="middle" dominant-baseline="alphabetic">` +
-                      `<tspan font-size="${largeBFontSizePx}px">B</tspan>` +
-                      `<tspan font-size="${titleFontSizePx}px">arcode</tspan>` +
-                      `<tspan dx="${spaceAdjustmentDx}px" font-size="${largeBFontSizePx}px">B</tspan>` +
-                      `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
-                    `</text>`;
-      
-      // Add description placeholder for the back
-      descriptionPlaceholderSvg = `<rect x="${lineInsetPx}" y="${descriptionAreaYStartPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${descriptionAreaHeightPx}" fill="#f0f0f0" />` +
-                                  `<text x="${fullCardWidthPx / 2}" y="${descriptionAreaYStartPx + descriptionAreaHeightPx / 2}" font-family="Arial, sans-serif" font-size="${titleFontSizePx * 0.8}px" fill="#b0b0b0" text-anchor="middle" dominant-baseline="middle">DESCRIPTION</text>`;
-      
-      titleTextSvg = titleTextSvg + descriptionPlaceholderSvg;
+    titleTextSvg = `<text x="${fullCardWidthPx / 2}" y="${titleActualBaselineYPx}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="black" text-anchor="middle" dominant-baseline="alphabetic">` +
+                    `<tspan font-size="${largeBFontSizePx}px">B</tspan>` +
+                    `<tspan font-size="${titleFontSizePx}px">arcode</tspan>` +
+                    `<tspan dx="${spaceAdjustmentDx}px" font-size="${largeBFontSizePx}px">B</tspan>` +
+                    `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
+                  `</text>`;
+    
+    // Add description placeholder for the back
+    descriptionPlaceholderSvg = `<rect x="${lineInsetPx}" y="${descriptionAreaYStartPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${descriptionAreaHeightPx}" fill="#f0f0f0" />` +
+                                `<text x="${fullCardWidthPx / 2}" y="${descriptionAreaYStartPx + descriptionAreaHeightPx / 2}" font-family="Arial, sans-serif" font-size="${titleFontSizePx * 0.8}px" fill="#b0b0b0" text-anchor="middle" dominant-baseline="middle">DESCRIPTION</text>`;
+    
+    titleTextSvg = titleTextSvg + descriptionPlaceholderSvg;
 
-    } else { // cardSide === 'front'
-      titleTextSvg = ''; // No "Barcode Battler" title on the front
+  } else { // cardSide === 'front'
+    titleTextSvg = ''; // No "Barcode Battler" title on the front
 
-      // Unified dimensions for Warrior and Item card fronts
-      const topTitleRowHeightPx = 12 * UI_SCALE_FACTOR; // Unified to Warrior spec
-      const imageHeightPx = 37 * UI_SCALE_FACTOR;       // Unified to Warrior spec (59 - 12 - 10 = 37)
-      const bottomRowHeightPx = 10 * UI_SCALE_FACTOR; // Unified to Warrior spec
+    // Unified dimensions for Warrior and Item card fronts
+    const topTitleRowHeightPx = 12 * UI_SCALE_FACTOR; // Unified to Warrior spec
+    const imageHeightPx = 37 * UI_SCALE_FACTOR;       // Unified to Warrior spec (59 - 12 - 10 = 37)
+    const bottomRowHeightPx = 10 * UI_SCALE_FACTOR; // Unified to Warrior spec
 
-      // Define separator lines for the front
-      const frontLine1Y = topTitleRowHeightPx;
-      const frontLine2Y = topTitleRowHeightPx + imageHeightPx;
-      separatorLinesSvg = `
+    // Define separator lines for the front
+    const frontLine1Y = topTitleRowHeightPx;
+    const frontLine2Y = topTitleRowHeightPx + imageHeightPx;
+    separatorLinesSvg = `
   <line x1="${lineX1}" y1="${frontLine1Y}" x2="${lineX2}" y2="${frontLine1Y}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />
   <line x1="${lineX1}" y1="${frontLine2Y}" x2="${lineX2}" y2="${frontLine2Y}" stroke="${lineStrokeColor}" stroke-width="${lineStrokeWidth}" />`;
 
-      let imageElementSvg = '';
-      if (customImageSrc) {
-        imageElementSvg = `<image href="${customImageSrc}" x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" preserveAspectRatio="xMidYMid slice" />`;
-      } else {
-        imageElementSvg = `<rect x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" fill="#e0e0e0" />` +
-                          `<text x="${fullCardWidthPx / 2}" y="${topTitleRowHeightPx + imageHeightPx / 2}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="#a0a0a0" text-anchor="middle" dominant-baseline="middle" font-size="${titleFontSizePx*1.5}px">IMAGE</text>`;
+    let imageElementSvg = '';
+    if (customImageSrc) {
+      imageElementSvg = `<image href="${customImageSrc}" x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" preserveAspectRatio="xMidYMid slice" />`;
+    } else {
+      imageElementSvg = `<rect x="${lineInsetPx}" y="${topTitleRowHeightPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${imageHeightPx}" fill="#e0e0e0" />` +
+                        `<text x="${fullCardWidthPx / 2}" y="${topTitleRowHeightPx + imageHeightPx / 2}" font-family="Anton SC, Arial, sans-serif" font-weight="bold" fill="#a0a0a0" text-anchor="middle" dominant-baseline="middle" font-size="${titleFontSizePx*1.5}px">IMAGE</text>`;
+    }
+
+    // Card Type and Insert instruction
+    const cardTypeFontSizePx = 4 * UI_SCALE_FACTOR;
+    const insertFontSizePx = 3 * UI_SCALE_FACTOR;
+    const cardTypeYPosPx = (topTitleRowHeightPx / 2) + (cardTypeFontSizePx * capHeightRatio / 3); // Adjusted for visual centering
+    const insertTextYPosPx = cardTypeYPosPx + insertFontSizePx * 1.2; // Position "Insert" below card type
+
+    const cardTypeName = currentCardType?.toUpperCase() || '';
+    let cardTypeTextSvg = `<text x="${fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2)}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${cardTypeFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic">${escapeXml(cardTypeName)}</text>`;
+    cardTypeTextSvg += `<text x="${fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2)}" y="${insertTextYPosPx}" font-family="Arial, sans-serif" font-size="${insertFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic"><tspan font-family="monospace" font-size="${insertFontSizePx*1.5}px" dy="-${insertFontSizePx*0.1}px">▶</tspan> Insert</text>`;
+    
+    // Card Title (Name) Placeholder - Top Left
+    const nameFontSizePx = cardTypeFontSizePx * 1.1; // Similar size to card type
+    const nameXPosPx = lineInsetPx + (UI_SCALE_FACTOR * 2);
+    const nameColor = currentCardName && currentCardName.trim() !== '' ? "black" : "#a0a0a0";
+    const nameSvg = `<text x="${nameXPosPx}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${nameFontSizePx}px" fill="${nameColor}" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(nameText)}</text>`;
+
+    // Bottom row text (HP for Warriors, Type-Acronym for Items)
+    const bottomTextYPosPx = topTitleRowHeightPx + imageHeightPx + (bottomRowHeightPx / 2) + (titleFontSizePx * capHeightRatio / 2);
+    let bottomRowTextLeftSvg = ''; 
+
+    if (currentCardType === 'Soldier' || currentCardType === 'Wizard') {
+      const hpValue = data.stats?.hp || 0;
+      const hpText = `HP ${hpValue}`;
+      bottomRowTextLeftSvg = `<text x="${lineInsetPx + (UI_SCALE_FACTOR * 2)}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(hpText)}</text>`;
+    } else if (currentCardType === 'Weapon' || currentCardType === 'Armour' || currentCardType === 'PowerUp') {
+      // Determine acronym and value based on item type
+      let acronym = '';
+      let value: number | undefined = undefined; // Initialize value that can be undefined (0 is a valid stat)
+
+      if (currentCardType === 'Weapon' && data.stats?.st !== undefined) {
+        acronym = 'ST'; value = data.stats.st;
+      } else if (currentCardType === 'Armour' && data.stats?.df !== undefined) {
+        acronym = 'DF'; value = data.stats.df;
+      } else if (currentCardType === 'PowerUp') {
+        // For PowerUp, determine the stat. A PowerUp card should ideally boost one primary stat.
+        // Check in a preferred order or based on which stat is available.
+        if (data.stats?.hp !== undefined) { acronym = 'HP'; value = data.stats.hp; }
+        else if (data.stats?.st !== undefined) { acronym = 'ST'; value = data.stats.st; }
+        else if (data.stats?.df !== undefined) { acronym = 'DF'; value = data.stats.df; }
+        // Future: else if (data.stats?.dx !== undefined) { acronym = 'DX'; value = data.stats.dx; }
+        // Future: else if (data.stats?.pp !== undefined) { acronym = 'PP'; value = data.stats.pp; }
+        // Future: else if (data.stats?.mp !== undefined) { acronym = 'MP'; value = data.stats.mp; }
       }
-
-      // Card Type and Insert instruction
-      const cardTypeFontSizePx = 4 * UI_SCALE_FACTOR;
-      const insertFontSizePx = 3 * UI_SCALE_FACTOR;
-      const cardTypeYPosPx = (topTitleRowHeightPx / 2) + (cardTypeFontSizePx * capHeightRatio / 3); // Adjusted for visual centering
-      const insertTextYPosPx = cardTypeYPosPx + insertFontSizePx * 1.2; // Position "Insert" below card type
-
-      const cardTypeName = currentCardType?.toUpperCase() || '';
-      let cardTypeTextSvg = `<text x="${fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2)}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${cardTypeFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic">${escapeXml(cardTypeName)}</text>`;
-      cardTypeTextSvg += `<text x="${fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2)}" y="${insertTextYPosPx}" font-family="Arial, sans-serif" font-size="${insertFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic"><tspan font-family="monospace" font-size="${insertFontSizePx*1.5}px" dy="-${insertFontSizePx*0.1}px">▶</tspan> Insert</text>`;
       
-      // Card Title (Name) Placeholder - Top Left
-      const nameFontSizePx = cardTypeFontSizePx * 1.1; // Similar size to card type
-      const nameXPosPx = lineInsetPx + (UI_SCALE_FACTOR * 2);
-      const nameToDisplay = currentCardName && currentCardName.trim() !== '' ? currentCardName : "NAME";
-      const nameColor = currentCardName && currentCardName.trim() !== '' ? "black" : "#a0a0a0";
-      const nameSvg = `<text x="${nameXPosPx}" y="${cardTypeYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${nameFontSizePx}px" fill="${nameColor}" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(nameToDisplay)}</text>`;
-
-      // Bottom row text (HP for Warriors, Type-Acronym for Items)
-      const bottomTextYPosPx = topTitleRowHeightPx + imageHeightPx + (bottomRowHeightPx / 2) + (titleFontSizePx * capHeightRatio / 2);
-      let bottomRowTextLeftSvg = ''; 
-
-      if (currentCardType === 'Soldier' || currentCardType === 'Wizard') {
-        const hpValue = data.stats?.hp || 0;
-        const hpText = `HP ${hpValue}`;
-        bottomRowTextLeftSvg = `<text x="${lineInsetPx + (UI_SCALE_FACTOR * 2)}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(hpText)}</text>`;
-      } else if (currentCardType === 'Weapon' || currentCardType === 'Armour' || currentCardType === 'PowerUp') {
-        // Determine acronym and value based on item type
-        let acronym = '';
-        let value: number | undefined = undefined; // Initialize value that can be undefined (0 is a valid stat)
-
-        if (currentCardType === 'Weapon' && data.stats?.st !== undefined) {
-          acronym = 'ST'; value = data.stats.st;
-        } else if (currentCardType === 'Armour' && data.stats?.df !== undefined) {
-          acronym = 'DF'; value = data.stats.df;
-        } else if (currentCardType === 'PowerUp') {
-          // For PowerUp, determine the stat. A PowerUp card should ideally boost one primary stat.
-          // Check in a preferred order or based on which stat is available.
-          if (data.stats?.hp !== undefined) { acronym = 'HP'; value = data.stats.hp; }
-          else if (data.stats?.st !== undefined) { acronym = 'ST'; value = data.stats.st; }
-          else if (data.stats?.df !== undefined) { acronym = 'DF'; value = data.stats.df; }
-          // Future: else if (data.stats?.dx !== undefined) { acronym = 'DX'; value = data.stats.dx; }
-          // Future: else if (data.stats?.pp !== undefined) { acronym = 'PP'; value = data.stats.pp; }
-          // Future: else if (data.stats?.mp !== undefined) { acronym = 'MP'; value = data.stats.mp; }
-        }
-        
-        // Only construct and set bottomRowTextLeftSvg if a valid acronym and value were found
-        if (acronym && value !== undefined) { 
-            const itemText = `${acronym} ${value}`; // Display only acronym and value
-            bottomRowTextLeftSvg = `<text x="${lineInsetPx + (UI_SCALE_FACTOR * 2)}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(itemText)}</text>`;
-        } else {
-            // If no specific stat is found for the item type, clear the text.
-            bottomRowTextLeftSvg = ''; 
-        }
+      // Only construct and set bottomRowTextLeftSvg if a valid acronym and value were found
+      if (acronym && value !== undefined) { 
+          const itemText = `${acronym} ${value}`; // Display only acronym and value
+          bottomRowTextLeftSvg = `<text x="${lineInsetPx + (UI_SCALE_FACTOR * 2)}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="start" dominant-baseline="alphabetic">${escapeXml(itemText)}</text>`;
+      } else {
+          // If no specific stat is found for the item type, clear the text.
+          bottomRowTextLeftSvg = ''; 
       }
-
-      // Add ENEMY text for Soldiers/Wizards if not a hero
-      let enemyTextSvg = '';
-      if ((currentCardType === 'Soldier' || currentCardType === 'Wizard') && data.isHero === false) {
-        const enemyText = "ENEMY";
-        // Position ENEMY text on the right side of the bottom row
-        const enemyTextXPosPx = fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2); 
-        enemyTextSvg = `<text x="${enemyTextXPosPx}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic">${escapeXml(enemyText)}</text>`;
-      }
-
-      // Assemble front card elements
-      // Order matters for SVG rendering (later elements on top)
-      // Ensure enemyTextSvg is included here
-      titleTextSvg = nameSvg + imageElementSvg + cardTypeTextSvg + bottomRowTextLeftSvg + enemyTextSvg;
     }
-    // --- End of separator lines ---
 
-    const tempJsBarcodeSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    const jsBarcodeOptions: JsBarcode.Options = {
-      format: barcodeFormat,
-      displayValue: false,
-      margin: 0,
-      height: 50,
-      fontSize: 0, // Changed from 12
-      textMargin: 0, // Changed from 2
-      width: 2,
-    };
+    // Add ENEMY text for Soldiers/Wizards if not a hero
+    let enemyTextSvg = '';
+    if ((currentCardType === 'Soldier' || currentCardType === 'Wizard') && data.isHero === false) {
+      const enemyText = "ENEMY";
+      // Position ENEMY text on the right side of the bottom row
+      const enemyTextXPosPx = fullCardWidthPx - lineInsetPx - (UI_SCALE_FACTOR * 2); 
+      enemyTextSvg = `<text x="${enemyTextXPosPx}" y="${bottomTextYPosPx}" font-family="Anton SC, Arial, sans-serif" font-size="${titleFontSizePx}px" fill="black" text-anchor="end" dominant-baseline="alphabetic">${escapeXml(enemyText)}</text>`;
+    }
 
-    try {
-      JsBarcode(tempJsBarcodeSvgElement, barcodeValue, jsBarcodeOptions);
-    } catch (e) {
-      console.error("JsBarcode generation failed inside helper:", e);
+    // Assemble front card elements
+    // Order matters for SVG rendering (later elements on top)
+    // Ensure enemyTextSvg is included here
+    titleTextSvg = nameSvg + imageElementSvg + cardTypeTextSvg + bottomRowTextLeftSvg + enemyTextSvg;
+  }
+  // --- End of separator lines ---
+
+  const tempJsBarcodeSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const jsBarcodeOptions: JsBarcode.Options = {
+    format: data.barcode.length === 8 ? "EAN8" : "EAN13",
+    displayValue: false,
+    margin: 0,
+    height: 50,
+    fontSize: 0, // Changed from 12
+    textMargin: 0, // Changed from 2
+    width: 2,
+  };
+
+  try {
+    JsBarcode(tempJsBarcodeSvgElement, data.barcode, jsBarcodeOptions);
+  } catch (e) {
+    console.error("JsBarcode generation failed inside helper:", e);
+    return '';
+  }
+
+  const actualGeneratedBarcodeWidthPx = parseFloat(tempJsBarcodeSvgElement.getAttribute('width') || '0');
+  const actualGeneratedBarcodeHeightPxByAttr = parseFloat(tempJsBarcodeSvgElement.getAttribute('height') || '0');
+  const jsBarcodeInnerContent = tempJsBarcodeSvgElement.innerHTML;
+
+  if (actualGeneratedBarcodeWidthPx === 0 || actualGeneratedBarcodeHeightPxByAttr === 0) {
+      console.error("JsBarcode generated an SVG with zero dimensions. Width:", actualGeneratedBarcodeWidthPx, "Height:", actualGeneratedBarcodeHeightPxByAttr);
       return '';
-    }
+  }
 
-    const actualGeneratedBarcodeWidthPx = parseFloat(tempJsBarcodeSvgElement.getAttribute('width') || '0');
-    const actualGeneratedBarcodeHeightPxByAttr = parseFloat(tempJsBarcodeSvgElement.getAttribute('height') || '0');
-    const jsBarcodeInnerContent = tempJsBarcodeSvgElement.innerHTML;
+  const barcodeContentEffectiveHeightPx = 
+    jsBarcodeOptions.displayValue === false && jsBarcodeOptions.height
+      ? jsBarcodeOptions.height 
+      : actualGeneratedBarcodeHeightPxByAttr;
 
-    if (actualGeneratedBarcodeWidthPx === 0 || actualGeneratedBarcodeHeightPxByAttr === 0) {
-        console.error("JsBarcode generated an SVG with zero dimensions. Width:", actualGeneratedBarcodeWidthPx, "Height:", actualGeneratedBarcodeHeightPxByAttr);
-        return '';
-    }
-
-    const barcodeContentEffectiveHeightPx = 
-      jsBarcodeOptions.displayValue === false && jsBarcodeOptions.height
-        ? jsBarcodeOptions.height 
-        : actualGeneratedBarcodeHeightPxByAttr;
-
-    // Returns the inner content: a rect for the card background, title text, separator lines, and the barcode group
-    // The parent SVG will define the overall size and viewBox for scaling.
-    return `
+  // Returns the inner content: a rect for the card background, title text, separator lines, and the barcode group
+  // The parent SVG will define the overall size and viewBox for scaling.
+  return `
   <rect width="100%" height="100%" fill="white" stroke="black" stroke-width="1px" rx="${cardCornerRadiusPx}px" ry="${cardCornerRadiusPx}px" />
   ${titleTextSvg}
   ${separatorLinesSvg}
@@ -309,7 +300,14 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     </svg>
   </g>` : ''}
 `;
-  }, [data, t, UI_SCALE_FACTOR, antonScFontDataUrl]); // Added UI_SCALE_FACTOR and antonScFontDataUrl to dependencies
+};
+
+const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits, customImage, onImageUpload, cardName, onCardNameChange }) => {
+  const { t } = useTranslation();
+  const barcodeUiCardBackRef = useRef<SVGSVGElement>(null); // Renamed for clarity
+  const barcodeUiCardFrontRef = useRef<SVGSVGElement>(null); // New ref for the front
+
+  const flatData = flattenData(data);
 
   useEffect(() => {
     const svgContainerBack = barcodeUiCardBackRef.current;
@@ -318,12 +316,12 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     if (data.barcode && data.isValid) {
       if (svgContainerBack) {
         try {
-          const cardSvgContentBack = generateCardSvgContent( // Use the memoized version from the component scope
-            data.barcode,
-            data.barcode.length === 8 ? "EAN8" : "EAN13",
+          const cardSvgContentBack = generateCardSvgContent(
+            data,
             'back',
             null, // No custom image for back
-            undefined // No card name for back
+            undefined, // No card name for back
+            t // Pass t function
           );
           
           if (cardSvgContentBack) {
@@ -344,12 +342,12 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       }
       if (svgContainerFront) {
         try {
-          const cardSvgContentFront = generateCardSvgContent( // Use the memoized version from the component scope
-            data.barcode,
-            data.barcode.length === 8 ? "EAN8" : "EAN13",
+          const cardSvgContentFront = generateCardSvgContent(
+            data,
             'front',
             customImage, // Pass customImage to front card
-            cardName // Pass cardName to front card
+            cardName, // Pass cardName to front card
+            t // Pass t function
           );
           
           if (cardSvgContentFront) {
@@ -372,24 +370,24 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       if (svgContainerBack) svgContainerBack.innerHTML = '';
       if (svgContainerFront) svgContainerFront.innerHTML = '';
     }
-  }, [data, t, generateCardSvgContent, customImage, cardName]); // Added cardName to useEffect dependencies
+  }, [data, t, customImage, cardName]);
 
   const handleDownloadBarcode = async () => {
     if (data.barcode && data.isValid) {
       try {
         const cardSvgContentFront = generateCardSvgContent(
-          data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          data,
           'front',
           customImage, // Pass customImage
-          cardName // Pass cardName
+          cardName, // Pass cardName
+          t // Pass t function
         );
         const cardSvgContentBack = generateCardSvgContent(
-          data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          data,
           'back',
           null, // No custom image for back
-          undefined // No card name for back
+          undefined, // No card name for back
+          t // Pass t function
         );
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
@@ -460,18 +458,18 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     if (data.barcode && data.isValid) {
       try {
         const cardSvgContentFront = generateCardSvgContent(
-          data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          data,
           'front',
           customImage, // Pass customImage
-          cardName // Pass cardName
+          cardName, // Pass cardName
+          t // Pass t function
         );
         const cardSvgContentBack = generateCardSvgContent(
-          data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          data,
           'back',
           null, // No custom image for back
-          undefined // No card name for back
+          undefined, // No card name for back
+          t // Pass t function
         );
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
@@ -563,18 +561,18 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     if (data.barcode && data.isValid) {
       try {
         const cardSvgContentFront = generateCardSvgContent(
-          data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          data,
           'front',
           customImage, // Pass customImage
-          cardName // Pass cardName
+          cardName, // Pass cardName
+          t // Pass t function
         );
         const cardSvgContentBack = generateCardSvgContent(
-          data.barcode,
-          data.barcode.length === 8 ? "EAN8" : "EAN13",
+          data,
           'back',
           null, // No custom image for back
-          undefined // No card name for back
+          undefined, // No card name for back
+          t // Pass t function
         );
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
@@ -892,7 +890,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
             type="text"
             value={cardName || ''}
             onChange={(e) => onCardNameChange?.(e.target.value)}
-            placeholder={t('fieldLabelCardType')} // Or a more generic placeholder
+            placeholder={t('cardNameInputPlaceholder')} // Changed from t('fieldLabelCardType')
           />
         </div>
         {onImageUpload && (
