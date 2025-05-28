@@ -18,7 +18,10 @@
   "barcodeInvalidLength": "Barcode must be 8 (EAN-8) or 13 (UPC-A/EAN-13) digits long.",
   "barcodeInvalidChars": "Barcode must contain only digits.",
   "barcodeInvalidChecksum": "Invalid checksum.",
+  "barcodeInvalidCheckDigit": "Invalid EAN-13 check digit. The last digit does not match the calculated check digit.",
   "barcodeUnknownError": "An unknown error occurred during parsing.",
+  "barcodeError.UNKNOWN_GAME_ITEM": "This barcode does not correspond to a known game item type.",
+  "barcodeInvalidGeneric": "Invalid barcode. Please check the number and try again.",
   "cardPropertiesTitle": "Card Properties",
   "parsingDetailsTitle": "Barcode Parsing Details",
   "cardCustomizationTitle": "Card Customization",
@@ -211,5 +214,7 @@
     "98": "Rewards Player with Passcode 48 (C2 Mode)",
     "99": "Rewards Player with Passcode 49 (C2 Mode)"
   },
-  "userManualLink": "User Manual"
+  "userManualLink": "User Manual",
+  "cardDescriptionPlaceholder": "Description...",
+  "cardDescriptionInputLabel": "Card Description:"
 }

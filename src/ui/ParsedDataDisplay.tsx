@@ -1,20 +1,23 @@
-import React, { useEffect, useRef } from 'react'; // Added useEffect, useRef
+import React, { useEffect, useRef, useMemo, useState } from 'react'; // Added useState
+import JsBarcode from 'jsbarcode';
+import { jsPDF } from 'jspdf';
 import { useTranslation } from 'react-i18next';
-import JsBarcode from 'jsbarcode'; // Import JsBarcode
-import { jsPDF } from 'jspdf'; // Importación para PDF
+import antonScFontDataUrl from '../assets/fonts/Anton_SC/AntonSC-Regular.ttf?inline';
+import inconsolataFontDataUrl from '../assets/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf?inline';
 import { ParsedBarcodeData, DigitMappingDetail } from '../lib/barcode-parser';
-import antonScFontDataUrl from '../assets/fonts/Anton_SC/AntonSC-Regular.ttf?inline'; // Importación para la fuente
 
-const UI_SCALE_FACTOR = 3; // Define at component/module level
+const UI_SCALE_FACTOR = 3;
 
 interface ParsedDataDisplayProps {
   data: ParsedBarcodeData;
   showExplanations: boolean;
   setHighlightedDigits: (indices: number[] | null) => void;
-  customImage?: string | null; // Add customImage prop
-  onImageUpload?: (event: React.ChangeEvent<HTMLInputElement>) => void; // Add onImageUpload prop
-  cardName?: string; // Add cardName prop
-  onCardNameChange?: (name: string) => void; // Add onCardNameChange prop
+  customImage?: string | null;
+  onImageUpload?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  cardName?: string;
+  onCardNameChange?: (name: string) => void;
+  cardDescription?: string;
+  onCardDescriptionChange?: (description: string) => void;
 }
 
 // Helper to flatten the data object for display
@@ -65,6 +68,7 @@ const generateCardSvgContent = (
   cardSide: 'front' | 'back',
   customImageSrc: string | null | undefined, // Add customImageSrc parameter
   currentCardName: string | undefined, // Add currentCardName parameter
+  currentCardDescription: string | undefined, // Add currentCardDescription parameter
   t: (key: string) => string // Add t function as a parameter
 ): string => {
   const nameText = currentCardName || t('cardNameInputPlaceholder'); // Use t function for default name
@@ -128,12 +132,7 @@ const generateCardSvgContent = (
     const descriptionAreaHeightPx = 32 * UI_SCALE_FACTOR; // Standard for all back cards
     let descriptionAreaYStartPx = 0;
 
-    // Unified dimensions for Item and Warrior card backs based on Item specs
-    // Item cards back: Top row 14mm, Card description 32mm, Bottom row 13mm
-    // Total height = 14 + 32 + 13 = 59mm
     const topRowHeightPx = 14 * UI_SCALE_FACTOR;         // Unified to Item spec
-    // Description height is fixed at 32mm, so it's already descriptionAreaHeightPx
-
     descriptionAreaYStartPx = topRowHeightPx;
     const yPos2Px = topRowHeightPx + descriptionAreaHeightPx; // End of description, start of bottom row
 
@@ -151,10 +150,88 @@ const generateCardSvgContent = (
                     `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
                   `</text>`;
     
-    // Add description placeholder for the back
-    descriptionPlaceholderSvg = `<rect x="${lineInsetPx}" y="${descriptionAreaYStartPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${descriptionAreaHeightPx}" fill="#f0f0f0" />` +
-                                `<text x="${fullCardWidthPx / 2}" y="${descriptionAreaYStartPx + descriptionAreaHeightPx / 2}" font-family="Arial, sans-serif" font-size="${titleFontSizePx * 0.8}px" fill="#b0b0b0" text-anchor="middle" dominant-baseline="middle">DESCRIPTION</text>`;
-    
+    const statsString = `HP: ${data.stats?.hp ?? '-'} / ST: ${data.stats?.st ?? '-'} / DF: ${data.stats?.df ?? '-'}`;
+    const descriptionText = currentCardDescription || t('cardDescriptionPlaceholder');
+    const statsFontSizePx = titleFontSizePx * 0.7;
+    const descriptionFontSizePx = titleFontSizePx * 0.8;
+    const textPaddingPx = 2 * UI_SCALE_FACTOR;
+    const statsYPosPx = descriptionAreaYStartPx + textPaddingPx + (statsFontSizePx / 2);
+    const descriptionColor = currentCardDescription && currentCardDescription.trim() !== '' ? "#333" : "#666";
+
+    const descriptionAreaWidthPx = fullCardWidthPx - (2 * lineInsetPx) - (2 * textPaddingPx);
+
+    // Helper function for text wrapping (adjusted for monospace)
+    const wrapText = (text: string, maxWidth: number, fontSize: number): string[] => {
+      if (!text) return [];
+      const words = text.split(' ');
+      const lines: string[] = [];
+      if (words.length === 0) return [];
+      let currentLine = words[0] || ''; // Ensure currentLine is initialized, even if words[0] is undefined
+      
+      // For monospace fonts, character width is more consistent.
+      // The 0.6 ratio is a common approximation for monospace character width relative to font size.
+      // This might still need slight tuning depending on the specific font metrics.
+      const charWidth = fontSize * 0.6;
+
+      for (let i = 1; i < words.length; i++) {
+        const word = words[i];
+        // Calculate width based on character count * charWidth
+        if ((currentLine.length + 1 + word.length) * charWidth < maxWidth) {
+          currentLine += " " + word;
+        } else {
+          lines.push(currentLine);
+          currentLine = word;
+        }
+      }
+      lines.push(currentLine);
+      return lines;
+    };
+
+    const wrappedDescriptionLines = wrapText(descriptionText, descriptionAreaWidthPx, descriptionFontSizePx);
+    const lineHeight = descriptionFontSizePx * 1.2; // Keep line height adjustment
+    let descriptionTextElements = '';
+    let currentDescriptionYPosPx = statsYPosPx + statsFontSizePx + textPaddingPx;
+
+    wrappedDescriptionLines.forEach((line, index) => {
+      const yPos = currentDescriptionYPosPx + (index * lineHeight);
+      if (yPos < (descriptionAreaYStartPx + descriptionAreaHeightPx - textPaddingPx)) {
+        // Use Inconsolata for the description text
+        descriptionTextElements += `<text x="${lineInsetPx + textPaddingPx}" y="${yPos}" font-family="Inconsolata, monospace" font-size="${descriptionFontSizePx}px" fill="${descriptionColor}" text-anchor="start" dominant-baseline="hanging">${escapeXml(line)}</text>`;
+      }
+    });
+
+    let statsDisplayContent = '';
+    if (currentCardType === 'Soldier' || currentCardType === 'Wizard') {
+      statsDisplayContent =
+        `<tspan font-weight="bold">HP:</tspan>${escapeXml(` ${data.stats?.hp ?? '-'}`)} / ` +
+        `<tspan font-weight="bold">ST:</tspan>${escapeXml(` ${data.stats?.st ?? '-'}`)} / ` +
+        `<tspan font-weight="bold">DF:</tspan>${escapeXml(` ${data.stats?.df ?? '-'}`)}`;
+    } else if (currentCardType === 'Weapon' || currentCardType === 'Armour' || currentCardType === 'PowerUp') {
+      let itemStatAcronym = '';
+      let itemStatValue: number | undefined = undefined;
+
+      if (currentCardType === 'Weapon' && data.stats?.st !== undefined) {
+        itemStatAcronym = 'ST'; itemStatValue = data.stats.st;
+      } else if (currentCardType === 'Armour' && data.stats?.df !== undefined) {
+        itemStatAcronym = 'DF'; itemStatValue = data.stats.df;
+      } else if (currentCardType === 'PowerUp') {
+        if (data.stats?.hp !== undefined) { itemStatAcronym = 'HP'; itemStatValue = data.stats.hp; }
+        else if (data.stats?.st !== undefined) { itemStatAcronym = 'ST'; itemStatValue = data.stats.st; }
+        else if (data.stats?.df !== undefined) { itemStatAcronym = 'DF'; itemStatValue = data.stats.df; }
+      }
+
+      if (itemStatAcronym && itemStatValue !== undefined) {
+        statsDisplayContent = `<tspan font-weight="bold">${itemStatAcronym}:</tspan>${escapeXml(` ${itemStatValue}`)}`;
+      } else {
+        statsDisplayContent = ''; // No specific stat to display
+      }
+    }
+
+    descriptionPlaceholderSvg =
+      `<rect x="${lineInsetPx}" y="${descriptionAreaYStartPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${descriptionAreaHeightPx}" fill="transparent" />` +
+      (statsDisplayContent ? `<text x="${lineInsetPx + textPaddingPx}" y="${statsYPosPx}" font-family="Inconsolata, monospace" font-size="${statsFontSizePx}px" fill="#333" text-anchor="start" dominant-baseline="middle">${statsDisplayContent}</text>` : '') +
+      descriptionTextElements;
+
     titleTextSvg = titleTextSvg + descriptionPlaceholderSvg;
 
   } else { // cardSide === 'front'
@@ -250,45 +327,52 @@ const generateCardSvgContent = (
   }
   // --- End of separator lines ---
 
+  // Variables for JsBarcode result
+  let jsBarcodeSuccess = true;
+  let jsBarcodeInnerContent = '';
+  let actualGeneratedBarcodeWidthPx = 0;
+  let barcodeContentEffectiveHeightPx = 0; // Used in viewBox if successful
+
   const tempJsBarcodeSvgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   const jsBarcodeOptions: JsBarcode.Options = {
     format: data.barcode.length === 8 ? "EAN8" : "EAN13",
     displayValue: false,
     margin: 0,
     height: 50,
-    fontSize: 0, // Changed from 12
-    textMargin: 0, // Changed from 2
+    fontSize: 0,
+    textMargin: 0,
     width: 2,
   };
 
   try {
     JsBarcode(tempJsBarcodeSvgElement, data.barcode, jsBarcodeOptions);
+    
+    jsBarcodeInnerContent = tempJsBarcodeSvgElement.innerHTML;
+    actualGeneratedBarcodeWidthPx = parseFloat(tempJsBarcodeSvgElement.getAttribute('width') || '0');
+    const generatedHeight = parseFloat(tempJsBarcodeSvgElement.getAttribute('height') || '0');
+
+    if (actualGeneratedBarcodeWidthPx === 0 || generatedHeight === 0) {
+      console.error("JsBarcode generated an SVG with zero dimensions. Width:", actualGeneratedBarcodeWidthPx, "Height:", generatedHeight);
+      jsBarcodeSuccess = false;
+    } else {
+      barcodeContentEffectiveHeightPx = 
+        jsBarcodeOptions.displayValue === false && jsBarcodeOptions.height
+          ? jsBarcodeOptions.height 
+          : generatedHeight;
+    }
   } catch (e) {
     console.error("JsBarcode generation failed inside helper:", e);
-    return '';
+    jsBarcodeSuccess = false;
   }
 
-  const actualGeneratedBarcodeWidthPx = parseFloat(tempJsBarcodeSvgElement.getAttribute('width') || '0');
-  const actualGeneratedBarcodeHeightPxByAttr = parseFloat(tempJsBarcodeSvgElement.getAttribute('height') || '0');
-  const jsBarcodeInnerContent = tempJsBarcodeSvgElement.innerHTML;
-
-  if (actualGeneratedBarcodeWidthPx === 0 || actualGeneratedBarcodeHeightPxByAttr === 0) {
-      console.error("JsBarcode generated an SVG with zero dimensions. Width:", actualGeneratedBarcodeWidthPx, "Height:", actualGeneratedBarcodeHeightPxByAttr);
-      return '';
-  }
-
-  const barcodeContentEffectiveHeightPx = 
-    jsBarcodeOptions.displayValue === false && jsBarcodeOptions.height
-      ? jsBarcodeOptions.height 
-      : actualGeneratedBarcodeHeightPxByAttr;
-
-  // Returns the inner content: a rect for the card background, title text, separator lines, and the barcode group
+  const cardBackgroundColor = 'white'; // Always white now
+  // Returns the inner content: a rect for the card background, title text, separator lines, and the barcode group (if successful)
   // The parent SVG will define the overall size and viewBox for scaling.
   return `
-  <rect width="100%" height="100%" fill="white" stroke="black" stroke-width="1px" rx="${cardCornerRadiusPx}px" ry="${cardCornerRadiusPx}px" />
+  <rect width="100%" height="100%" fill="${cardBackgroundColor}" stroke="black" stroke-width="1px" rx="${cardCornerRadiusPx}px" ry="${cardCornerRadiusPx}px" />
   ${titleTextSvg}
   ${separatorLinesSvg}
-  ${cardSide === 'back' ? `
+  ${(cardSide === 'back' && jsBarcodeSuccess) ? `
   <g transform="translate(${barcodeXUnrotatedPx}, ${barcodeYUnrotatedPx}) rotate(180 ${barcodeOnCardWidthPx / 2} ${barcodeOnCardHeightPx / 2})">
     <svg
       width="${barcodeOnCardWidthPx}"
@@ -302,26 +386,39 @@ const generateCardSvgContent = (
 `;
 };
 
-const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits, customImage, onImageUpload, cardName, onCardNameChange }) => {
+const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits, customImage, onImageUpload, cardName, onCardNameChange, cardDescription, onCardDescriptionChange }) => {
   const { t } = useTranslation();
-  const barcodeUiCardBackRef = useRef<SVGSVGElement>(null); // Renamed for clarity
-  const barcodeUiCardFrontRef = useRef<SVGSVGElement>(null); // New ref for the front
+  const barcodeUiCardBackRef = useRef<SVGSVGElement>(null);
+  const barcodeUiCardFrontRef = useRef<SVGSVGElement>(null);
+  const [parsingError, setParsingError] = useState<string | null>(null); // Added state for parsing error
 
-  const flatData = flattenData(data);
+  const flatData = useMemo(() => flattenData(data), [data]);
 
   useEffect(() => {
     const svgContainerBack = barcodeUiCardBackRef.current;
     const svgContainerFront = barcodeUiCardFrontRef.current;
 
+    // 1. Handle parsing error display
+    if (!data.isValid) {
+      const message = data.errorKey
+        ? t(data.errorKey, { defaultValue: t('barcodeInvalidGeneric') })
+        : t('barcodeInvalidGeneric');
+      setParsingError(message);
+    } else {
+      setParsingError(null); // Clear error if data is valid
+    }
+
+    // 2. Handle SVG rendering (existing logic from your attachment)
     if (data.barcode && data.isValid) {
       if (svgContainerBack) {
         try {
           const cardSvgContentBack = generateCardSvgContent(
             data,
             'back',
-            null, // No custom image for back
-            undefined, // No card name for back
-            t // Pass t function
+            null, 
+            undefined, 
+            cardDescription, 
+            t
           );
           
           if (cardSvgContentBack) {
@@ -345,9 +442,10 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
           const cardSvgContentFront = generateCardSvgContent(
             data,
             'front',
-            customImage, // Pass customImage to front card
-            cardName, // Pass cardName to front card
-            t // Pass t function
+            customImage, 
+            cardName, 
+            undefined, 
+            t
           );
           
           if (cardSvgContentFront) {
@@ -367,28 +465,17 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         }
       }
     } else {
+      // Barcode is invalid or not present, clear SVGs
       if (svgContainerBack) svgContainerBack.innerHTML = '';
       if (svgContainerFront) svgContainerFront.innerHTML = '';
     }
-  }, [data, t, customImage, cardName]);
+  }, [data, t, customImage, cardName, cardDescription]);
 
   const handleDownloadBarcode = async () => {
     if (data.barcode && data.isValid) {
       try {
-        const cardSvgContentFront = generateCardSvgContent(
-          data,
-          'front',
-          customImage, // Pass customImage
-          cardName, // Pass cardName
-          t // Pass t function
-        );
-        const cardSvgContentBack = generateCardSvgContent(
-          data,
-          'back',
-          null, // No custom image for back
-          undefined, // No card name for back
-          t // Pass t function
-        );
+        const cardSvgContentFront = generateCardSvgContent(data, 'front', customImage, cardName, undefined, t);
+        const cardSvgContentBack = generateCardSvgContent(data, 'back', null, undefined, cardDescription, t);
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
           console.error("Failed to generate SVG content for download.");
@@ -407,6 +494,12 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         @font-face {
           font-family: 'Anton SC';
           src: url(${antonScFontDataUrl}) format('truetype');
+          font-weight: normal;
+          font-style: normal;
+        }
+        @font-face {
+          font-family: 'Inconsolata';
+          src: url(${inconsolataFontDataUrl}) format('truetype');
           font-weight: normal;
           font-style: normal;
         }
@@ -457,20 +550,8 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   const handleDownloadPdf = async () => {
     if (data.barcode && data.isValid) {
       try {
-        const cardSvgContentFront = generateCardSvgContent(
-          data,
-          'front',
-          customImage, // Pass customImage
-          cardName, // Pass cardName
-          t // Pass t function
-        );
-        const cardSvgContentBack = generateCardSvgContent(
-          data,
-          'back',
-          null, // No custom image for back
-          undefined, // No card name for back
-          t // Pass t function
-        );
+        const cardSvgContentFront = generateCardSvgContent(data, 'front', customImage, cardName, undefined, t);
+        const cardSvgContentBack = generateCardSvgContent(data, 'back', null, undefined, cardDescription, t);
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
           console.error("Failed to generate SVG content for PDF download.");
@@ -494,6 +575,12 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         @font-face {
           font-family: 'Anton SC';
           src: url(${antonScFontDataUrl}) format('truetype');
+          font-weight: normal;
+          font-style: normal;
+        }
+        @font-face {
+          font-family: 'Inconsolata';
+          src: url(${inconsolataFontDataUrl}) format('truetype');
           font-weight: normal;
           font-style: normal;
         }
@@ -560,20 +647,8 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   const handleDownloadPng = async () => {
     if (data.barcode && data.isValid) {
       try {
-        const cardSvgContentFront = generateCardSvgContent(
-          data,
-          'front',
-          customImage, // Pass customImage
-          cardName, // Pass cardName
-          t // Pass t function
-        );
-        const cardSvgContentBack = generateCardSvgContent(
-          data,
-          'back',
-          null, // No custom image for back
-          undefined, // No card name for back
-          t // Pass t function
-        );
+        const cardSvgContentFront = generateCardSvgContent(data, 'front', customImage, cardName, undefined, t);
+        const cardSvgContentBack = generateCardSvgContent(data, 'back', null, undefined, cardDescription, t);
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
           console.error("Failed to generate SVG content for PNG download.");
@@ -581,7 +656,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         }
 
         const cardWidthMM = 86;
-        const cardHeightMM = 59; 
+        const cardHeightMM = 59;
         const svgViewBoxWidth = cardWidthMM * UI_SCALE_FACTOR;
         const svgViewBoxHeight = cardHeightMM * UI_SCALE_FACTOR;
         const targetDpi = 300;
@@ -597,6 +672,12 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         @font-face {
           font-family: 'Anton SC';
           src: url(${antonScFontDataUrl}) format('truetype');
+          font-weight: normal;
+          font-style: normal;
+        }
+        @font-face {
+          font-family: 'Inconsolata';
+          src: url(${inconsolataFontDataUrl}) format('truetype');
           font-weight: normal;
           font-style: normal;
         }
@@ -658,16 +739,16 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     'race', 'occupation', 'flag', 'isHero', 'isSingleUse',
   ];
   const parsingDetailKeys = [
-    'barcode', 'barcodeType', 'isValid', 'errorKey', 'methodUsed', 'reasonKey' // Added barcodeType
+    'barcode', 'barcodeType', 'isValid', 'errorKey', 'methodUsed', 'reasonKey'
   ];
 
-  const cardPropertyData = Object.entries(flatData)
+  const cardPropertyData = useMemo(() => Object.entries(flatData)
     .filter(([key]) => cardPropertyKeys.includes(key))
-    .filter(([, value]) => value !== undefined && value !== null);
+    .filter(([, value]) => value !== undefined && value !== null), [flatData]);
 
-  const parsingDetailData = Object.entries(flatData)
+  const parsingDetailData = useMemo(() => Object.entries(flatData)
     .filter(([key]) => parsingDetailKeys.includes(key))
-    .filter(([, value]) => value !== undefined && value !== null);
+    .filter(([, value]) => value !== undefined && value !== null), [flatData]);
 
   const digitMappings = data.digitMappings || {} as Record<string, DigitMappingDetail>;
 
@@ -708,11 +789,11 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
 
   const fieldLabelKeys: Record<string, string> = {
     barcode: 'fieldLabelBarcode',
-    barcodeType: 'fieldLabelBarcodeType', // Added barcodeType
+    barcodeType: 'fieldLabelBarcodeType',
     isValid: 'fieldLabelIsValid',
-    errorKey: 'fieldLabelError', // Changed from error
+    errorKey: 'fieldLabelError',
     methodUsed: 'fieldLabelMethodUsed',
-    reasonKey: 'fieldLabelReason', // Changed from reason
+    reasonKey: 'fieldLabelReason',
     cardType: 'fieldLabelCardType',
     powerUpType: 'fieldLabelPowerUpType',
     'stats.hp': 'fieldLabelHp',
@@ -733,10 +814,9 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     isValid: 'explanationIsValid',
     methodUsed: 'explanationMethodUsed',
     race: 'explanationRace', // Add a generic explanation key for race
-    // barcodeType explanation is dynamic via digitMappings
   };
 
-  const renderTable = (titleKey: string, tableData: [string, any][]) => (
+  const renderTable = (titleKey: string, tableDataToRender: [string, any][]) => ( // Renamed tableData to tableDataToRender
     <div style={{ marginBottom: '20px' }}>
       <h3>{t(titleKey)}</h3>
       <table
@@ -751,7 +831,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
           </tr>
         </thead>
         <tbody>
-          {tableData.map(([key, value]) => {
+          {tableDataToRender.map(([key, value]) => { // Use tableDataToRender
             let displayExplanation: string = t('noExplanationAvailable'); // Initialize as string
             const mappingDetail = digitMappings[key];
             const staticExplanationKey = staticExplanationKeys[key];
@@ -855,62 +935,84 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
 
   return (
     <div className="parsed-data-display">
-      {data.barcode && data.isValid && (
-        <div style={{ marginBottom: '20px', textAlign: 'center' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '10px' }}>
-            <div>
-              <h4>{t('cardFrontTitle')}</h4>
-              <svg ref={barcodeUiCardFrontRef}></svg>
-            </div>
-            <div>
-              <h4>{t('cardBackTitle')}</h4>
-              <svg ref={barcodeUiCardBackRef}></svg>
-            </div>
-          </div>
-          <div>
-            <button onClick={handleDownloadBarcode} style={{ marginTop: '10px' }}>
-              {t('downloadCardButtonSvgAll')}
-            </button>
-            <button onClick={handleDownloadPdf} style={{ marginTop: '10px', marginLeft: '10px' }}>
-              {t('downloadCardButtonPdfAll')}
-            </button>
-            <button onClick={handleDownloadPng} style={{ marginTop: '10px', marginLeft: '10px' }}>
-              {t('downloadCardButtonPngAll')}
-            </button>
-          </div>
+      <div className="card-inputs-container">
+        {/* ... existing input fields ... */}
+      </div>
+
+      {parsingError && (
+        <div className="error-message parsing-error" style={{ color: 'red', marginBottom: '10px', padding: '10px', border: '1px solid red', borderRadius: '4px' }}>
+          <p>{parsingError}</p>
         </div>
       )}
-      {/* Card Customization Section */}
-      <div className="customization-section results-box">
-        <h3>{t('cardCustomizationTitle')}</h3>
-        <div className="input-container">
-          <label htmlFor="card-name-input">{t('cardNameInputLabel')}</label>
-          <input
-            id="card-name-input"
-            type="text"
-            value={cardName || ''}
-            onChange={(e) => onCardNameChange?.(e.target.value)}
-            placeholder={t('cardNameInputPlaceholder')} // Changed from t('fieldLabelCardType')
-          />
-        </div>
-        {onImageUpload && (
-          <div className="input-container image-upload-container">
-            <label htmlFor="image-upload-input-details">
-              {t('uploadImageLabel')}
-              <span className="tooltip-trigger" title={t('imageUploadHelpTooltip')}>ⓘ</span>
-            </label>
-            <input
-              id="image-upload-input-details"
-              type="file"
-              accept="image/*"
-              onChange={onImageUpload}
-            />
+
+      <div className="card-previews-container">
+        {data.barcode && data.isValid && (
+          <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '10px' }}>
+              <div>
+                <h4>{t('cardFrontTitle')}</h4>
+                <svg ref={barcodeUiCardFrontRef}></svg>
+              </div>
+              <div>
+                <h4>{t('cardBackTitle')}</h4>
+                <svg ref={barcodeUiCardBackRef}></svg>
+              </div>
+            </div>
+            <div>
+              <button onClick={handleDownloadBarcode} style={{ marginTop: '10px' }}>
+                {t('downloadCardButtonSvgAll')}
+              </button>
+              <button onClick={handleDownloadPdf} style={{ marginTop: '10px', marginLeft: '10px' }}>
+                {t('downloadCardButtonPdfAll')}
+              </button>
+              <button onClick={handleDownloadPng} style={{ marginTop: '10px', marginLeft: '10px' }}>
+                {t('downloadCardButtonPngAll')}
+              </button>
+            </div>
           </div>
         )}
+        {/* Card Customization Section */}
+        <div className="customization-section results-box">
+          <h3>{t('cardCustomizationTitle')}</h3>
+          <div className="input-container">
+            <label htmlFor="card-name-input">{t('cardNameInputLabel')}</label>
+            <input
+              id="card-name-input"
+              type="text"
+              value={cardName || ''}
+              onChange={(e) => onCardNameChange?.(e.target.value)}
+              placeholder={t('cardNameInputPlaceholder')}
+            />
+          </div>
+          <div className="input-container">
+            <label htmlFor="card-description-input">{t('cardDescriptionInputLabel')}</label>
+            <textarea
+              id="card-description-input"
+              value={cardDescription || ''}
+              onChange={(e) => onCardDescriptionChange?.(e.target.value)}
+              placeholder={t('cardDescriptionPlaceholder')}
+              rows={3}
+            />
+          </div>
+          {onImageUpload && (
+            <div className="input-container">
+              <label htmlFor="image-upload-input">
+                {t('uploadImageLabel')}
+                <span className="tooltip-trigger" title={t('imageUploadHelpTooltip')}>ⓘ</span>
+              </label>
+              <input
+                id="image-upload-input"
+                type="file"
+                accept="image/svg+xml,image/png,image/jpeg"
+                onChange={onImageUpload}
+              />
+            </div>
+          )}
+        </div>
+        {/* Ensure tables are rendered only if there is data for them */}
+        {renderTable('cardPropertiesTitle', cardPropertyData)}
+        {renderTable('parsingDetailsTitle', parsingDetailData)}
       </div>
-      {/* Ensure tables are rendered only if there is data for them */}
-      {cardPropertyData.length > 0 && renderTable('cardPropertiesTitle', cardPropertyData)}
-      {parsingDetailData.length > 0 && renderTable('parsingDetailsTitle', parsingDetailData)}
     </div>
   );
 };

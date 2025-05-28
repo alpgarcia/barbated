@@ -72,6 +72,7 @@ function App() {
   const [highlightedDigits, setHighlightedDigits] = useState<number[] | null>(null) // State for highlighted digits
   const [customImage, setCustomImage] = useState<string | null>(null); // State for custom image
   const [cardName, setCardName] = useState<string>(''); // State for card name
+  const [cardDescription, setCardDescription] = useState<string>(''); // State for card description
 
   const handleParse = () => {
     try {
@@ -81,6 +82,7 @@ function App() {
       setHighlightedDigits(null) // Reset highlight on new parse
       setCardName(''); // Reset card name on new parse
       setCustomImage(null); // Reset custom image on new parse
+      setCardDescription(''); // Reset card description on new parse
     } catch (err) {
       setParsedData(null)
       // Use translation key for unknown error, parser errors will be keys now
@@ -164,6 +166,8 @@ function App() {
               onImageUpload={handleImageUpload} // Pass the handler
               cardName={cardName} // Pass cardName
               onCardNameChange={setCardName} // Pass cardName setter
+              cardDescription={cardDescription} // Pass cardDescription
+              onCardDescriptionChange={setCardDescription} // Pass cardDescription setter
             />
           </div>
         </div>

@@ -7,11 +7,21 @@ describe('Barcode Parser', () => {
       const result = parseBarcode(barcode);
 
       // Check validity first
-      if (expected.errorKey) { // Check for errorKey instead of error
+      if (expected.errorKey) { 
         expect(result.isValid).toBe(false);
         expect(result.errorKey).toBeDefined();
-        // Optionally check if the specific errorKey matches
         expect(result.errorKey).toBe(expected.errorKey);
+        // If the expected error is barcodeInvalidLength, also check barcodeType is Unknown
+        if (expected.errorKey === 'barcodeInvalidLength') {
+            expect(result.barcodeType).toBe('Unknown');
+        } else if (expected.errorKey === 'barcodeInvalidChars' || expected.errorKey === 'barcodeInvalidCheckDigit') {
+            // For these errors, barcodeType should be determined if length was valid
+            if (barcode.replace(/\s+/g, '').length === 8) {
+                expect(result.barcodeType).toBe('EAN-8');
+            } else if (barcode.replace(/\s+/g, '').length === 13) {
+                expect(result.barcodeType).toBe('EAN-13/UPC-A');
+            }
+        }
         return;
       }
 
@@ -48,6 +58,13 @@ describe('Barcode Parser', () => {
         expect(result.powerUpType).toBe(expected.powerUpType);
       }
     });
+  });
+
+  test('should parse barcode 1340912373503 correctly', () => {
+    const result = parseBarcode('1340912373503');
+    expect(result.isValid).toBe(false);
+    expect(result.errorKey).toBe('barcodeInvalidCheckDigit');
+    expect(result.barcodeType).toBe('EAN-13/UPC-A');
   });
 
   test('should handle barcode with spaces', () => {
