@@ -150,7 +150,6 @@ const generateCardSvgContent = (
                     `<tspan font-size="${titleFontSizePx}px">attler</tspan>` +
                   `</text>`;
     
-    const statsString = `HP: ${data.stats?.hp ?? '-'} / ST: ${data.stats?.st ?? '-'} / DF: ${data.stats?.df ?? '-'}`;
     const descriptionText = currentCardDescription || t('cardDescriptionPlaceholder');
     const statsFontSizePx = titleFontSizePx * 0.7;
     const descriptionFontSizePx = titleFontSizePx * 0.8;
@@ -365,14 +364,9 @@ const generateCardSvgContent = (
     jsBarcodeSuccess = false;
   }
 
-  const cardBackgroundColor = 'white'; // Always white now
-  // Returns the inner content: a rect for the card background, title text, separator lines, and the barcode group (if successful)
-  // The parent SVG will define the overall size and viewBox for scaling.
-  return `
-  <rect width="100%" height="100%" fill="${cardBackgroundColor}" stroke="black" stroke-width="1px" rx="${cardCornerRadiusPx}px" ry="${cardCornerRadiusPx}px" />
-  ${titleTextSvg}
-  ${separatorLinesSvg}
-  ${(cardSide === 'back' && jsBarcodeSuccess) ? `
+  let barcodeSvgPart = '';
+  if (cardSide === 'back' && jsBarcodeSuccess) {
+    barcodeSvgPart = `
   <g transform="translate(${barcodeXUnrotatedPx}, ${barcodeYUnrotatedPx}) rotate(180 ${barcodeOnCardWidthPx / 2} ${barcodeOnCardHeightPx / 2})">
     <svg
       width="${barcodeOnCardWidthPx}"
@@ -382,7 +376,17 @@ const generateCardSvgContent = (
     >
       ${jsBarcodeInnerContent}
     </svg>
-  </g>` : ''}
+  </g>`;
+  }
+
+  const cardBackgroundColor = 'white'; // Always white now
+  // Returns the inner content: a rect for the card background, title text, separator lines, and the barcode group (if successful)
+  // The parent SVG will define the overall size and viewBox for scaling.
+  return `
+  <rect width="100%" height="100%" fill="${cardBackgroundColor}" stroke="black" stroke-width="1px" rx="${cardCornerRadiusPx}px" ry="${cardCornerRadiusPx}px" />
+  ${titleTextSvg}
+  ${separatorLinesSvg}
+  ${barcodeSvgPart}
 `;
 };
 

@@ -1,4 +1,4 @@
-import { ParsedBarcodeData } from '../barcode-parser';
+import { ParsedBarcodeData, CardType } from '../barcode-parser'; // Added CardType import
 
 // Define helper to create expected data structure easily
 // Allow a subset of ParsedBarcodeData fields for defining expectations.
@@ -10,7 +10,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '0401207336501', // Rarman-CP (Soldier, Method 1)
     expected: {
       methodUsed: 1,
-      cardType: 'Soldier',
+      cardType: CardType.Soldier, // Used CardType enum
       stats: { hp: 4000, st: 1200, df: 700, dx: 6, pp: 5, mp: 0 }, // J=6, PP=5 (Fighter), MP=0 (I=3 < 6)
       race: 3, // H=3 -> Bird Tribe
       occupation: 3, // I=3 (Occupation Digit, <7 -> Soldier)
@@ -24,7 +24,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '0340912373503', // VMD-Kurif (Wizard, Method 1)
     expected: {
       methodUsed: 1,
-      cardType: 'Wizard', // I=7 -> Wizard
+      cardType: CardType.Wizard, // Used CardType enum
       stats: { hp: 3400, st: 900, df: 1200, dx: 3, pp: 5, mp: 10 }, // J=3, PP=5 (Fighter), MP=10 (I=7 >= 6)
       race: 3, // H=3 -> Bird Tribe
       occupation: 7, // I=7 (Occupation Digit, >=7 -> Wizard)
@@ -38,7 +38,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '0000400603238', // NJ-Sword (Weapon, Method 1) - Assuming H=6 for Durable Weapon
     expected: {
       methodUsed: 1,
-      cardType: 'Weapon',
+      cardType: CardType.Weapon, // Used CardType enum
       stats: { hp: 0, st: 400, df: 0, dx: 3, pp: undefined, mp: undefined }, // J=3, No PP/MP for items
       race: undefined, // Weapons don't have race? Or is it H? H=6 (Durable Weapon)
       occupation: 0, // I=0 (Occupation Digit)
@@ -52,7 +52,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '0000007801143', // CN-Armor (Armour, Method 1) - Assuming H=8 for Durable Armour
     expected: {
       methodUsed: 1,
-      cardType: 'Armour',
+      cardType: CardType.Armour, // Used CardType enum
       stats: { hp: 0, st: 0, df: 700, dx: 1, pp: undefined, mp: undefined }, // J=1, No PP/MP for items
       race: undefined, // H=8 (Durable Armour)
       occupation: 0, // I=0 (Occupation Digit)
@@ -66,7 +66,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '0000018703382', // HP-Glass -> Actually Armour based on H=8
      expected: {
       methodUsed: 1,
-      cardType: 'Armour', // Corrected: H=8 is Armour
+      cardType: CardType.Armour, // Corrected: H=8 is Armour // Used CardType enum
       stats: { hp: 0, st: 0, df: 1800, dx: 3, pp: undefined, mp: undefined }, // Corrected stats for Armour (DF=F*1k+G*100=1800, DX=J=3, No PP/MP for items)
       race: undefined, // H=8 (Single Use Armour)
       occupation: 0, // I=0 (Occupation Digit)
@@ -82,7 +82,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '2096175365189', // Soldier with I=6 (ST_SOLDIER_6)
     expected: {
       methodUsed: 1,
-      cardType: 'Soldier',
+      cardType: CardType.Soldier, // Used CardType enum
       stats: { hp: 20900, st: 6100, df: 7500, dx: 5, pp: 5, mp: 10 }, // J=5, PP=5 (Fighter), MP=10 (I=6 >= 6)
       race: 3, // Corrected: H=3 -> Bird Tribe
       occupation: 6, // I=6 (Occupation Digit)
@@ -98,7 +98,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '1315661065749', // DARMAN
     expected: {
       methodUsed: 1,
-      cardType: 'Soldier', // I=6
+      cardType: CardType.Soldier, // I=6 // Used CardType enum
       stats: { hp: 13100, st: 5600, df: 6100, dx: 5, pp: 5, mp: 10 },
       race: 0, // H=0 -> Mech Tribe
       occupation: 6, // I=6
@@ -114,7 +114,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '1784984166189', // DACRONE
     expected: {
       methodUsed: 1,
-      cardType: 'Soldier', // I=6
+      cardType: CardType.Soldier, // I=6 // Used CardType enum
       stats: { hp: 17800, st: 4900, df: 8400, dx: 6, pp: 5, mp: 10 },
       race: 1, // H=1 -> Animal Tribe
       occupation: 6, // I=6
@@ -141,7 +141,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '00123456',
     expected: {
       methodUsed: 2,
-      cardType: 'Weapon',
+      cardType: CardType.Weapon, // Used CardType enum
       stats: { hp: 0, st: 1700, df: 0, dx: 0, pp: undefined, mp: undefined }, // No PP/MP defined for Method 2 yet
       race: undefined,
       occupation: undefined, // Method 2 doesn't define occupation
@@ -157,7 +157,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '4905040352507', // Barcode Battler Console
     expected: {
       methodUsed: 'Exception',
-      cardType: 'Soldier',
+      cardType: CardType.Soldier, // Used CardType enum
       stats: { hp: 5200, st: 1500, df: 100, dx: 6, pp: 5, mp: 0 },
       race: 1, // Predefined: Animal Tribe
       occupation: 0, // Predefined: Occupation 0
@@ -169,7 +169,7 @@ export const testBarcodes: { barcode: string; expected: ExpectedData }[] = [
     barcode: '0120401154185', // Rarman (Original Hero Exception)
     expected: {
       methodUsed: 'Exception', // Overridden
-      cardType: 'Soldier', // H=1 -> Animal, I=5 -> Soldier
+      cardType: CardType.Soldier, // H=1 -> Animal, I=5 -> Soldier // Used CardType enum
       stats: { hp: 1200, st: 400, df: 100, dx: 4, pp: 5, mp: 0 }, // J=4, PP=5 (Fighter), MP=0 (I=5 < 6)
       race: 1, // H=1
       occupation: 5, // I=5 (Occupation Digit)
