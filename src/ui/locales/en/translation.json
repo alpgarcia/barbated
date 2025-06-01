@@ -3,6 +3,7 @@
   "barcodeInputLabel": "Enter Barcode:",
   "barcodeInputPlaceholder": "e.g., 0340912373503",
   "parseButton": "Parse Barcode",
+  "orLabel": "Or:",
   "uploadImageLabel": "Upload Custom Image:",
   "imageUploadHelpTooltip": "For best results, use an image with an 80:37 aspect ratio (e.g., 800x370px). Images with different proportions will be scaled to cover the 80x37 area, centered, and any excess will be cropped. SVG format is recommended for sharpness. Your image is processed locally in your browser and is not uploaded to any server.",
   "downloadCardButtonSvg": "Download Card (SVG)",
@@ -216,5 +217,11 @@
   },
   "userManualLink": "User Manual",
   "cardDescriptionPlaceholder": "Description...",
-  "cardDescriptionInputLabel": "Card Description:"
+  "cardDescriptionInputLabel": "Card Description:",
+  "saveCardButton": "Save Card (.json)",
+  "loadCardButton": "Load Card (.json)",
+  "noBarcodeToSaveError": "No barcode data to save. Please parse a barcode first.",
+  "imageProcessingError": "Error processing image. Please try a different image or try again.",
+  "fileReadError": "Error reading or parsing the card file. Please ensure it is a valid .json file.",
+  "barcodeCannotBeEmpty": "Barcode cannot be empty. Please enter a barcode."
 }

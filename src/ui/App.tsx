@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { useTranslation } from 'react-i18next'; // Import useTranslation
+import { useState, useRef } from 'react' // Import useRef
+import { useTranslation } from 'react-i18next';
 import './App.css'
 import { parseBarcode, ParsedBarcodeData } from '../lib/barcode-parser'
 import ParsedDataDisplay from './ParsedDataDisplay'
+import { SavedCardState } from '../lib/types'; // Import SavedCardState
 
 // New component to display the barcode with highlighting
 interface BarcodeDisplayProps {
@@ -64,29 +65,39 @@ const BarcodeDisplay: React.FC<BarcodeDisplayProps> = ({ barcode, highlightedInd
 };
 
 function App() {
-  const { t } = useTranslation(); // Get translation function
+  const { t } = useTranslation();
   const [barcode, setBarcode] = useState('')
   const [parsedData, setParsedData] = useState<ParsedBarcodeData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showExplanations, setShowExplanations] = useState(false)
-  const [highlightedDigits, setHighlightedDigits] = useState<number[] | null>(null) // State for highlighted digits
-  const [customImage, setCustomImage] = useState<string | null>(null); // State for custom image
-  const [cardName, setCardName] = useState<string>(''); // State for card name
-  const [cardDescription, setCardDescription] = useState<string>(''); // State for card description
+  const [highlightedDigits, setHighlightedDigits] = useState<number[] | null>(null)
+  const [customImage, setCustomImage] = useState<string | null>(null);
+  const [cardName, setCardName] = useState<string>('');
+  const [cardDescription, setCardDescription] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for file input
 
-  const handleParse = () => {
+  const handleParse = (barcodeToParse?: string) => {
+    const currentBarcode = barcodeToParse || barcode;
+    if (!currentBarcode) {
+      // Use a more specific translation key if available, or a general one.
+      setError(t('barcodeCannotBeEmpty', "Barcode cannot be empty.")); 
+      setParsedData(null);
+      return;
+    }
     try {
-      const result = parseBarcode(barcode)
+      const result = parseBarcode(currentBarcode)
       setParsedData(result)
       setError(null)
-      setHighlightedDigits(null) // Reset highlight on new parse
-      setCardName(''); // Reset card name on new parse
-      setCustomImage(null); // Reset custom image on new parse
-      setCardDescription(''); // Reset card description on new parse
+      setHighlightedDigits(null) 
+      // Only reset these if not loading from a file
+      if (!barcodeToParse) {
+        setCardName(''); 
+        setCustomImage(null); 
+        setCardDescription(''); 
+      }
     } catch (err) {
       setParsedData(null)
-      // Use translation key for unknown error, parser errors will be keys now
-      setError(err instanceof Error ? err.message : t('barcodeUnknownError'))
+      setError(err instanceof Error ? err.message : t('barcodeUnknownError', "An unknown error occurred during parsing."))
       setHighlightedDigits(null)
     }
   }
@@ -101,6 +112,93 @@ function App() {
       reader.readAsDataURL(file);
     } else {
       setCustomImage(null);
+    }
+  };
+
+  const handleSaveCard = async () => {
+    if (!parsedData || !parsedData.isValid) { // Also check isValid
+      alert(t('noBarcodeToSaveError', "No valid barcode data to save. Please parse a barcode first."));
+      return;
+    }
+
+    let customImageBase64: string | undefined = undefined;
+    if (customImage) {
+      if (customImage.startsWith('data:image')) {
+        customImageBase64 = customImage;
+      } else if (customImage.startsWith('blob:')) {
+        try {
+          const response = await fetch(customImage);
+          const blobValue = await response.blob(); // Renamed to avoid conflict
+          customImageBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blobValue); // Use renamed variable
+          });
+        } catch (e) {
+          console.error("Error processing blob image:", e);
+          alert(t('imageProcessingError', "Error processing image. Please try a different image or try again."));
+          return;
+        }
+      }
+    }
+
+    const cardState: SavedCardState = {
+      barcode: parsedData.barcode,
+      cardName: cardName || undefined,
+      cardDescription: cardDescription || undefined,
+      customImageBase64: customImageBase64,
+    };
+
+    const jsonData = JSON.stringify(cardState, null, 2);
+    const blobJson = new Blob([jsonData], { type: 'application/json' }); // Renamed to avoid conflict
+    const url = URL.createObjectURL(blobJson); // Use renamed variable
+    const a = document.createElement('a');
+    a.href = url;
+    const safeCardName = cardName?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'card';
+    a.download = `${safeCardName}.json`; // Changed extension to .json
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleLoadCard = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const loadedState = JSON.parse(text) as SavedCardState;
+          
+          setBarcode(loadedState.barcode); // Update barcode input field
+          setCardName(loadedState.cardName || '');
+          setCardDescription(loadedState.cardDescription || '');
+          setCustomImage(loadedState.customImageBase64 || null);
+          
+          // Call handleParse with the loaded barcode to update parsedData
+          // and other dependent states, without resetting name/desc/img
+          handleParse(loadedState.barcode);
+
+        } catch (err) {
+          console.error("Error reading or parsing .bbcard file:", err);
+          alert(t('fileReadError', "Error reading or parsing the card file. Please ensure it is a valid .bbcard file."));
+          setError(t('fileReadError', "Failed to load card data."));
+          setParsedData(null);
+        }
+      };
+      reader.onerror = () => {
+        console.error("Error reading file:", reader.error);
+        alert(t('fileReadError', "Error reading the selected file."));
+        setError(t('fileReadError', "Failed to read file."));
+        setParsedData(null);
+      };
+      reader.readAsText(file);
+      // Reset file input to allow loading the same file again
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
@@ -124,13 +222,28 @@ function App() {
           onChange={(e) => setBarcode(e.target.value)}
           placeholder={t('barcodeInputPlaceholder')} // Translate placeholder
         />
-        <button onClick={handleParse}>{t('parseButton')}</button>
+        <button onClick={() => handleParse()}>{t('parseButton')}</button> {/* Ensure handleParse is called without args here */}
+      </div>
+
+      {/* Load Card Action */}
+      <div className="input-container" style={{ alignItems: 'center' }}>
+        <span>{t('orLabel')}</span> {/* "Or:" text. marginRight removed, assuming .input-container handles spacing. */}
+        <input
+          type="file"
+          accept=".json"
+          onChange={handleLoadCard}
+          style={{ display: 'none' }}
+          ref={fileInputRef}
+        />
+        <button onClick={() => fileInputRef.current?.click()}>
+          {t('loadCardButton', 'Load Card (.json)')}
+        </button>
       </div>
 
       {error && (
         <div className="error-message">
           {/* Translate the "Error:" prefix and the error message itself if it's a key */}
-          <p>{t('errorPrefix')} {t(error)}</p>
+          <p>{t('errorPrefix', 'Error:')} {t(error)}</p>
         </div>
       )}
 
@@ -168,6 +281,7 @@ function App() {
               onCardNameChange={setCardName} // Pass cardName setter
               cardDescription={cardDescription} // Pass cardDescription
               onCardDescriptionChange={setCardDescription} // Pass cardDescription setter
+              onSaveCard={handleSaveCard} // Pass handleSaveCard
             />
           </div>
         </div>

@@ -18,6 +18,7 @@ interface ParsedDataDisplayProps {
   onCardNameChange?: (name: string) => void;
   cardDescription?: string;
   onCardDescriptionChange?: (description: string) => void;
+  onSaveCard?: () => Promise<void>; // Added onSaveCard prop
 }
 
 // Helper to flatten the data object for display
@@ -227,7 +228,7 @@ const generateCardSvgContent = (
     }
 
     descriptionPlaceholderSvg =
-      `<rect x="${lineInsetPx}" y="${descriptionAreaYStartPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${descriptionAreaHeightPx}" fill="transparent" />` +
+      `<rect x="${lineInsetPx}" y="${descriptionAreaYStartPx}" width="${fullCardWidthPx - 2 * lineInsetPx}" height="${descriptionAreaHeightPx}" fill="white" />` + // Changed from transparent to white
       (statsDisplayContent ? `<text x="${lineInsetPx + textPaddingPx}" y="${statsYPosPx}" font-family="Inconsolata, monospace" font-size="${statsFontSizePx}px" fill="#333" text-anchor="start" dominant-baseline="middle">${statsDisplayContent}</text>` : '') +
       descriptionTextElements;
 
@@ -390,11 +391,11 @@ const generateCardSvgContent = (
 `;
 };
 
-const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits, customImage, onImageUpload, cardName, onCardNameChange, cardDescription, onCardDescriptionChange }) => {
+const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplanations, setHighlightedDigits, customImage, onImageUpload, cardName, onCardNameChange, cardDescription, onCardDescriptionChange, onSaveCard }) => {
   const { t } = useTranslation();
   const barcodeUiCardBackRef = useRef<SVGSVGElement>(null);
   const barcodeUiCardFrontRef = useRef<SVGSVGElement>(null);
-  const [parsingError, setParsingError] = useState<string | null>(null); // Added state for parsing error
+  const [parsingError, setParsingError] = useState<string | null>(null);
 
   const flatData = useMemo(() => flattenData(data), [data]);
 
@@ -475,10 +476,52 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
     }
   }, [data, t, customImage, cardName, cardDescription]);
 
+  // Helper function to convert an SVG data URL to a PNG data URL
+  const convertSvgDataUrlToPngDataUrl = (svgDataUrl: string, width: number, height: number): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject("Could not get canvas context for SVG to PNG conversion.");
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = (err) => {
+        reject("Error loading SVG data URL for conversion: " + err);
+      };
+      img.src = svgDataUrl;
+    });
+  };
+
   const handleDownloadBarcode = async () => {
     if (data.barcode && data.isValid) {
       try {
-        const cardSvgContentFront = generateCardSvgContent(data, 'front', customImage, cardName, undefined, t);
+        let processedCustomImage = customImage;
+
+        if (customImage && customImage.startsWith('data:image/svg+xml;base64,')) {
+          try {
+            // Dimensions for the image placeholder as used in generateCardSvgContent
+            const cardWidthMM = 86;
+            const lineInsetPx = 3 * UI_SCALE_FACTOR;
+            const fullCardWidthPx = cardWidthMM * UI_SCALE_FACTOR;
+            const imageHeightPx = 37 * UI_SCALE_FACTOR; 
+            const imageWidthPx = fullCardWidthPx - (2 * lineInsetPx);
+
+            processedCustomImage = await convertSvgDataUrlToPngDataUrl(customImage, imageWidthPx, imageHeightPx);
+          } catch (conversionError) {
+            console.error("Failed to convert custom SVG to PNG for embedding, using original SVG data:", conversionError);
+            // Fallback to original customImage if conversion fails, or set to null if preferred
+            // For now, it will use the original SVG data URL if conversion fails.
+          }
+        }
+
+        const cardSvgContentFront = generateCardSvgContent(data, 'front', processedCustomImage, cardName, undefined, t);
         const cardSvgContentBack = generateCardSvgContent(data, 'back', null, undefined, cardDescription, t);
 
         if (!cardSvgContentFront || !cardSvgContentBack) {
@@ -523,9 +566,10 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
   ${content}
 </svg>`;
           const blob = new Blob([finalCardSvgString], { type: 'image/svg+xml;charset=utf-8' });
+          const safeCardName = (cardName || 'card').replace(/[^a-z0-9]/gi, '_').toLowerCase();
           return {
             url: URL.createObjectURL(blob),
-            filename: `barcode-card-${side}-${data.barcode}.svg`
+            filename: `${safeCardName}-${side.toLowerCase()}.svg`
           };
         };
 
@@ -640,7 +684,8 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
         pdf.addImage(frontImgData, 'PNG', 0, 0, cardWidthMM, cardHeightMM);
         pdf.addPage();
         pdf.addImage(backImgData, 'PNG', 0, 0, cardWidthMM, cardHeightMM);
-        pdf.save(`barcode-card-FRONT-BACK-${data.barcode}.pdf`);
+        const safeCardName = (cardName || 'card').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        pdf.save(`${safeCardName}.pdf`);
 
       } catch (e) {
         console.error("Barcode card PDF download failed:", e);
@@ -717,7 +762,8 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
             const pngUrl = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.href = pngUrl;
-            link.download = `barcode-card-${side}-${data.barcode}.png`;
+            const safeCardName = (cardName || 'card').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            link.download = `${safeCardName}-${side.toLowerCase()}.png`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -737,6 +783,9 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
       }
     }
   };
+
+  // Determine if the customization section should be disabled
+  const isCustomizationDisabled = !data.isValid;
 
   const cardPropertyKeys = [
     'cardType', 'powerUpType', 'stats.hp', 'stats.st', 'stats.df', 'stats.dx', 'stats.pp', 'stats.mp',
@@ -986,6 +1035,7 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
               value={cardName || ''}
               onChange={(e) => onCardNameChange?.(e.target.value)}
               placeholder={t('cardNameInputPlaceholder')}
+              disabled={isCustomizationDisabled}
             />
           </div>
           <div className="input-container">
@@ -996,21 +1046,37 @@ const ParsedDataDisplay: React.FC<ParsedDataDisplayProps> = ({ data, showExplana
               onChange={(e) => onCardDescriptionChange?.(e.target.value)}
               placeholder={t('cardDescriptionPlaceholder')}
               rows={3}
+              disabled={isCustomizationDisabled}
             />
           </div>
-          {onImageUpload && (
-            <div className="input-container">
-              <label htmlFor="image-upload-input">
-                {t('uploadImageLabel')}
-                <span className="tooltip-trigger" title={t('imageUploadHelpTooltip')}>ⓘ</span>
-              </label>
-              <input
-                id="image-upload-input"
-                type="file"
-                accept="image/svg+xml,image/png,image/jpeg"
-                onChange={onImageUpload}
-              />
-            </div>
+          <div className="input-container">
+            <label htmlFor="image-upload-input">
+              {t('uploadImageLabel')}
+              <span className="tooltip-trigger" title={t('imageUploadHelpTooltip')}>ⓘ</span>
+            </label>
+            <input
+              id="image-upload-input"
+              type="file"
+              accept="image/svg+xml,image/png,image/jpeg"
+              onChange={onImageUpload}
+              disabled={isCustomizationDisabled}
+            />
+          </div>
+          {onSaveCard && (
+            <button 
+              onClick={onSaveCard} 
+              style={{ 
+                marginTop: '10px',
+                backgroundColor: '#646cff', // A distinct background color
+                color: 'white', // White text for contrast
+                border: 'none', // Remove default border
+                padding: '10px 15px', // Add some padding
+                borderRadius: '5px', // Rounded corners
+                cursor: 'pointer' // Pointer cursor on hover
+              }}
+            >
+              {t('saveCardButton', 'Save Card (.json)')}
+            </button>
           )}
         </div>
         {/* Ensure tables are rendered only if there is data for them */}
